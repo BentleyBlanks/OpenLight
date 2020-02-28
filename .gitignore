@@ -1,0 +1,29 @@
+*.swp
+# README~
+.gitignore~
+*.out
+*.tlog
+*.obj
+*.pdb
+*.idb
+*.sdf
+*.ilk
+*.log
+*.lastbuildstate
+*.suo
+*.VC.*
+*.csv
+*.ipch
+
+#*.sln
+#*.vcxproj
+#*.filters
+*.cache
+*.user
+*.psess
+*.vsp
+
+# Bin
+*.FileListAbsolute.txt
+# let user to compile static lib
+*.lib
