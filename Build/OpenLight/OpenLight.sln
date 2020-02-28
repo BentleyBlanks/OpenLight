@@ -5,9 +5,30 @@ VisualStudioVersion = 16.0.29806.167
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "OpenLight", "OpenLight", "{8EB45618-0623-4FA2-ACAA-DC244C2F7A04}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Engine", "Engine\Engine.vcxproj", "{0BF966AC-8A1C-4B68-A587-946A2BEB57D2}"
+EndProject
 Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0BF966AC-8A1C-4B68-A587-946A2BEB57D2}.Debug|x64.ActiveCfg = Debug|x64
+		{0BF966AC-8A1C-4B68-A587-946A2BEB57D2}.Debug|x64.Build.0 = Debug|x64
+		{0BF966AC-8A1C-4B68-A587-946A2BEB57D2}.Debug|x86.ActiveCfg = Debug|Win32
+		{0BF966AC-8A1C-4B68-A587-946A2BEB57D2}.Debug|x86.Build.0 = Debug|Win32
+		{0BF966AC-8A1C-4B68-A587-946A2BEB57D2}.Release|x64.ActiveCfg = Release|x64
+		{0BF966AC-8A1C-4B68-A587-946A2BEB57D2}.Release|x64.Build.0 = Release|x64
+		{0BF966AC-8A1C-4B68-A587-946A2BEB57D2}.Release|x86.ActiveCfg = Release|Win32
+		{0BF966AC-8A1C-4B68-A587-946A2BEB57D2}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{0BF966AC-8A1C-4B68-A587-946A2BEB57D2} = {8EB45618-0623-4FA2-ACAA-DC244C2F7A04}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {55C57BD9-9B60-4115-BFDC-6F8305C23953}
