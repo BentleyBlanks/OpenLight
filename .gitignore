@@ -27,3 +27,25 @@
 *.FileListAbsolute.txt
 # let user to compile static lib
 *.lib
+*.vcxproj
+*.filters
+Build/OpenLight/Bin/Debug/OpenLight.exe
+*.cmake
+Build/OpenLight/CMakeFiles/3.8.0-rc4/CMakeDetermineCompilerABI_C.bin
+*.rule
+Build/OpenLight/CMakeFiles/cmake.check_cache
+*.exe
+Build/OpenLight/CMakeFiles/3.8.0-rc4/CompilerIdCXX/CMakeCXXCompilerId.cpp
+*.c
+Build/OpenLight/CMakeFiles/3.8.0-rc4/CMakeDetermineCompilerABI_CXX.bin
+*.bin
+Build/OpenLight/CMakeFiles/feature_tests.cxx
+*.depend
+Build/OpenLight/CMakeFiles/generate.stamp
+*.list
+Build/OpenLight/CMakeFiles/TargetDirectories.txt
+*.sln
+Build/OpenLight/OpenLight.sln
+Build/OpenLight/CMakeCache.txt
+Build/OpenLight/Source/CMakeFiles/generate.stamp
+*.stamp
