@@ -81,3 +81,9 @@ App& App::GetInstance()
 	static App app;
 	return app;
 }
+
+App::~App()
+{
+	if (window)		delete window;
+	if (renderer)	delete renderer;
+}

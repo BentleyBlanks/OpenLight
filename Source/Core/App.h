@@ -19,6 +19,7 @@ private:
 	App() {}
 	App(const App&) {}
 	App& operator= (const App&) { return *this; }
+	~App();
 
 private:
 	Window* window     = nullptr;
