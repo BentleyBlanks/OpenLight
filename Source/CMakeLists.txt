@@ -9,4 +9,4 @@ SOURCE_GROUP("core" FILES ${CORE_SOURCE})
 
 
 ADD_EXECUTABLE(OpenLight  ${CORE_SOURCE} main.cpp )
-TARGET_LINK_LIBRARIES(OpenLight d3d12.lib dxgi.lib)
+TARGET_LINK_LIBRARIES(OpenLight d3d12.lib dxgi.lib D3DCompiler.lib)

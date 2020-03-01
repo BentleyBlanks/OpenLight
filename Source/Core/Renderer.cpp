@@ -2,7 +2,7 @@
 #include "Utility.h"
 #include <cassert>
 #include <chrono>
-
+#include <tchar.h>
 #ifdef min
 #undef min
 #endif
@@ -303,6 +303,9 @@ void Renderer::Init(HWND hWnd)
 
 	Fence = CreateFence(Device);
 	FenceEvent = CreateEventHandle();
+
+
+	InitTriangle();
 }
 
 void Renderer::Render()
@@ -312,6 +315,11 @@ void Renderer::Render()
 
 	commandAllocator->Reset();
 	CommandList->Reset(commandAllocator , nullptr);
+
+	CommandList->SetGraphicsRootSignature(signature.Get());
+	CommandList->SetPipelineState(pso.Get());
+	CommandList->RSSetViewports(1, &viewport);
+	CommandList->RSSetScissorRects(1, &scissorRect);
 
 	// Clear RenderTarget
 	D3D12_RESOURCE_BARRIER barrier = {};
@@ -327,7 +335,16 @@ void Renderer::Render()
 	D3D12_CPU_DESCRIPTOR_HANDLE rtv(RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 	rtv.ptr += CurrentBackBufferIndex * RTVDescriptorSize;
 
+	//ÉèÖÃäÖÈ¾Ä¿±ê
+	CommandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+
 	CommandList->ClearRenderTargetView(rtv , clearColor , 0 , nullptr);
+	CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	CommandList->IASetVertexBuffers(0, 1, &triangleVBView);
+	//Draw Call£¡£¡£¡
+	CommandList->DrawInstanced(3, 1, 0, 0);
+
+
 
 	// Present
 	barrier = {};
@@ -376,4 +393,105 @@ void Renderer::Resize(uint32_t width , uint32_t height)
 
 		UpdateRenderTargetViews(Device , SwapChain , RTVDescriptorHeap , BackBuffer);
 	}
+}
+
+void Renderer::InitTriangle()
+{
+	D3D12_INPUT_ELEMENT_DESC desc1[] =
+	{
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+		{"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+	};
+
+	Vertex triangleVertices[3] = { 
+		Vertex(DirectX::XMFLOAT4(-0.25f,-0.25f,1.f,1.f),DirectX::XMFLOAT4(1.f,0.f,0.f,1.f)),
+		Vertex(DirectX::XMFLOAT4(0.25f,0.25f,1.f,1.f),DirectX::XMFLOAT4(0.f,1.f,0.f,1.f)),
+		Vertex(DirectX::XMFLOAT4(0.25f,-0.25f,1.f,1.f),DirectX::XMFLOAT4(0.f,0.f,1.f,1.f))};
+	
+	ThrowIfFailed(Device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(triangleVertices)),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&triangleVB)));
+
+	UINT8* pVertexDataBegin = nullptr;			
+	CD3DX12_RANGE readRange(0, 0);		
+	ThrowIfFailed(triangleVB->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));		
+	std::memcpy(pVertexDataBegin, triangleVertices, sizeof(triangleVertices));			
+	triangleVB->Unmap(0, nullptr);
+
+	triangleVBView.BufferLocation = triangleVB->GetGPUVirtualAddress();
+	triangleVBView.StrideInBytes = sizeof(Vertex);
+	triangleVBView.SizeInBytes = sizeof(triangleVertices);
+
+	WRL::ComPtr<ID3DBlob> vs = nullptr;
+	WRL::ComPtr<ID3DBlob> ps = nullptr;
+
+#if defined(_DEBUG)		
+	UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+	UINT compileFlags = 0;			
+#endif 
+	
+	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\TriangleVS.hlsl",
+		nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vs, nullptr));	
+
+
+	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\TrianglePS.hlsl",
+		nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &ps, nullptr));
+
+	{
+		D3D12_ROOT_SIGNATURE_DESC stRootSignatureDesc =
+		{
+			0
+			, nullptr
+			, 0
+			, nullptr
+			, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
+		};
+		WRL::ComPtr<ID3DBlob> pISignatureBlob;
+		WRL::ComPtr<ID3DBlob> pIErrorBlob;
+		ThrowIfFailed(D3D12SerializeRootSignature(
+			&stRootSignatureDesc
+			, D3D_ROOT_SIGNATURE_VERSION_1
+			, &pISignatureBlob
+			, &pIErrorBlob));
+
+
+		ThrowIfFailed(Device->CreateRootSignature(0
+			, pISignatureBlob->GetBufferPointer()
+			, pISignatureBlob->GetBufferSize()
+			, IID_PPV_ARGS(&signature)));
+
+	}
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
+	memset(&psoDesc, 0, sizeof(psoDesc));
+	psoDesc.InputLayout = { desc1, _countof(desc1) };
+	psoDesc.pRootSignature = signature.Get();
+	psoDesc.VS.pShaderBytecode = vs->GetBufferPointer();
+	psoDesc.VS.BytecodeLength = vs->GetBufferSize();
+	psoDesc.PS.pShaderBytecode = ps->GetBufferPointer();
+	psoDesc.PS.BytecodeLength = ps->GetBufferSize();
+	psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+	psoDesc.BlendState.AlphaToCoverageEnable = FALSE;
+	psoDesc.BlendState.IndependentBlendEnable = FALSE;
+	psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	psoDesc.DepthStencilState.DepthEnable = FALSE;
+	psoDesc.DepthStencilState.StencilEnable = FALSE;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.SampleDesc.Count = 1;
+	ThrowIfFailed(Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pso)));
+
+
+	viewport = { 0.0f, 0.0f
+		, static_cast<float>(AppConfig::ClientWidth), static_cast<float>(AppConfig::ClientHeight), D3D12_MIN_DEPTH, D3D12_MAX_DEPTH };
+	scissorRect = { 0, 0
+		, static_cast<LONG>(AppConfig::ClientWidth), static_cast<LONG>(AppConfig::ClientHeight) };
 }
