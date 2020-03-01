@@ -1,7 +1,10 @@
 #include "Renderer.h"
-#include "Utility.h"
 #include <cassert>
 #include <chrono>
+#include <d3dx12.h>
+#include "Utility.h"
+#include "Scene.h"
+#include "GameObject.h"
 
 #ifdef min
 #undef min
@@ -273,84 +276,83 @@ void Flush(ID3D12CommandQueue* commandQueue , ID3D12Fence* Fence , uint64_t& Fen
 
 Renderer::Renderer()
 {
+	mScissorRect = D3D12_RECT{0 , 0 , LONG_MAX , LONG_MAX};
+	mViewport    = D3D12_VIEWPORT{0.0f, 0.0f, static_cast<float>(AppConfig::ClientWidth), static_cast<float>(AppConfig::ClientHeight)};
 }
 
-void Renderer::Init(HWND hWnd)
+void Renderer::Init(HWND hWnd, Scene* scene)
 {
+	mScene = scene;
+
 	EnableDebugLayer();
 
 	AppConfig::TearingSupported = CheckTearingSupport();
 
 	IDXGIAdapter4* dxgiAdapter4 = GetAdapter(AppConfig::UseWarp);
-	Device = CreateDevice(dxgiAdapter4);
+	mDevice = CreateDevice(dxgiAdapter4);
 
-	CommandQueue = CreateCommandQueue(Device , D3D12_COMMAND_LIST_TYPE_DIRECT);
-	SwapChain	 = CreateSwapChain(hWnd , CommandQueue , AppConfig::ClientWidth , AppConfig::ClientHeight , AppConfig::NumFrames);
+	mDirectQueue  = new CommandQueue(mDevice , D3D12_COMMAND_LIST_TYPE_DIRECT);
+	mComputeQueue = new CommandQueue(mDevice , D3D12_COMMAND_LIST_TYPE_COMPUTE);
+	mCopyQueue    = new CommandQueue(mDevice , D3D12_COMMAND_LIST_TYPE_COPY);
 
-	CurrentBackBufferIndex = SwapChain->GetCurrentBackBufferIndex();
+	RTVDescriptorHeap = CreateDescriptorHeap(mDevice , D3D12_DESCRIPTOR_HEAP_TYPE_RTV , AppConfig::NumFrames);
+	RTVDescriptorSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
-	RTVDescriptorHeap = CreateDescriptorHeap(Device , D3D12_DESCRIPTOR_HEAP_TYPE_RTV, AppConfig::NumFrames);
-	RTVDescriptorSize = Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	SwapChain = CreateSwapChain(hWnd , mDirectQueue->GetD3D12CommandQueue() , AppConfig::ClientWidth , AppConfig::ClientHeight , AppConfig::NumFrames);
+	mCurrentBackBufferIndex = 0;
+	UpdateRenderTargetViews(mDevice , SwapChain , RTVDescriptorHeap , BackBuffer);
 
-	UpdateRenderTargetViews(Device , SwapChain , RTVDescriptorHeap , BackBuffer);
-
-	for (int i = 0; i < AppConfig::NumFrames; i++)
-	{
-		CommandAllocator[i] = CreateCommandAllocator(Device , D3D12_COMMAND_LIST_TYPE_DIRECT);
-	}
-
-	CommandList = CreateCommandList(Device , CommandAllocator[CurrentBackBufferIndex] , D3D12_COMMAND_LIST_TYPE_DIRECT);
-
-	Fence = CreateFence(Device);
-	FenceEvent = CreateEventHandle();
+	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
+	dsvHeapDesc.NumDescriptors = 1;
+	dsvHeapDesc.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	dsvHeapDesc.Flags          = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	ThrowIfFailed(mDevice->CreateDescriptorHeap(&dsvHeapDesc , IID_PPV_ARGS(&mDSVHeap)));
 }
 
 void Renderer::Render()
 {
-	auto commandAllocator = CommandAllocator[CurrentBackBufferIndex];
-	auto backBuffer       = BackBuffer[CurrentBackBufferIndex];
+	auto CommandList = mDirectQueue->GetCommandList();
+	
+	auto BackBuffer = GetCurrentBackBuffer();
+	auto RTV = GetCurrentRTV();
+	auto DSV = GetCurrentDSV();
 
-	commandAllocator->Reset();
-	CommandList->Reset(commandAllocator , nullptr);
+	{
+		TransitionResource(CommandList , BackBuffer , D3D12_RESOURCE_STATE_PRESENT , D3D12_RESOURCE_STATE_RENDER_TARGET);
 
-	// Clear RenderTarget
-	D3D12_RESOURCE_BARRIER barrier = {};
-	barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource   = backBuffer;
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-	barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-	CommandList->ResourceBarrier(1 , &barrier);
+		FLOAT ClearColor[] = {0.4f, 0.6f, 0.9f, 1.0f};
+		ClearRTV(CommandList , RTV , ClearColor);
+		ClearDepth(CommandList , DSV);
+	}
 
-	FLOAT clearColor[] = {0.4f, 0.6f, 0.9f, 1.0f};
-	D3D12_CPU_DESCRIPTOR_HANDLE rtv(RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-	rtv.ptr += CurrentBackBufferIndex * RTVDescriptorSize;
+	for (int i = 0; i < mScene->GetNumObject(); i++)
+	{
+		auto ob     = mScene->GetVisibiltyObject(i);
+		auto shader = ob->GetShader();
 
-	CommandList->ClearRenderTargetView(rtv , clearColor , 0 , nullptr);
+		CommandList->SetPipelineState(shader->GetPipelineState());
+		CommandList->SetGraphicsRootSignature(shader->GetRootSignature());
+		CommandList->IASetVertexBuffers(0 , 1 , &(ob->GetVertexBufferView()));
+		CommandList->IASetIndexBuffer(&(ob->GetIndexBufferView()));
+		CommandList->RSSetViewports(1 , &mViewport);
+		CommandList->RSSetScissorRects(1 , &mScissorRect);
+		CommandList->OMSetRenderTargets(1 , &RTV , false , &DSV);
 
-	// Present
-	barrier = {};
-	barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource   = backBuffer;
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_PRESENT;
-	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-	CommandList->ResourceBarrier(1 , &barrier);
+		DirectX::XMMATRIX mvpMatrix;
+		CommandList->SetGraphicsRoot32BitConstants(0 , sizeof(DirectX::XMMATRIX) / 4 , &mvpMatrix , 0);
 
-	ThrowIfFailed(CommandList->Close());
-	ID3D12CommandList* const commandLists[] = {CommandList};
-	CommandQueue->ExecuteCommandLists(_countof(commandLists) , commandLists);
+		CommandList->DrawIndexedInstanced(ob->GetNumIndices() , 1 , 0 , 0 , 0);
+	}
 
-	UINT syncInterval = AppConfig::VSync ? 1 : 0;
-	UINT presentFlags = AppConfig::TearingSupported && !AppConfig::VSync ? DXGI_PRESENT_ALLOW_TEARING : 0;
-	ThrowIfFailed(SwapChain->Present(syncInterval , presentFlags));
 
-	FrameFenceValues[CurrentBackBufferIndex] = Signal(CommandQueue , Fence , FenceValue);
+	{
+		TransitionResource(CommandList , BackBuffer , D3D12_RESOURCE_STATE_RENDER_TARGET , D3D12_RESOURCE_STATE_PRESENT);
+		mFenceValues[mCurrentBackBufferIndex] = mDirectQueue->ExecuteCommandList(CommandList);
 
-	CurrentBackBufferIndex = SwapChain->GetCurrentBackBufferIndex();
-	WaitForFenceValue(Fence , FrameFenceValues[CurrentBackBufferIndex] , FenceEvent);
+		mCurrentBackBufferIndex = Present();
+
+		mDirectQueue->WaitForFenceValue(mFenceValues[mCurrentBackBufferIndex]);
+	}
 }
 
 void Renderer::Resize(uint32_t width , uint32_t height)
@@ -360,20 +362,117 @@ void Renderer::Resize(uint32_t width , uint32_t height)
 		AppConfig::ClientWidth  = std::max(1u , width);
 		AppConfig::ClientHeight = std::max(1u , height);
 
-		Flush(CommandQueue , Fence , FenceValue , FenceEvent);
+		mViewport = D3D12_VIEWPORT{0, 0, static_cast<float>(width), static_cast<float>(height), D3D12_MIN_DEPTH, D3D12_MAX_DEPTH};
 
+		ResizeDepthBuffer(width , height);
+
+		// resize back buffer
 		for (int i = 0; i < AppConfig::NumFrames; i++)
 		{
 			BackBuffer[i]->Release();
-			FrameFenceValues[i] = FrameFenceValues[CurrentBackBufferIndex];
 		}
-
 		DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
 		ThrowIfFailed(SwapChain->GetDesc(&swapChainDesc));
-		ThrowIfFailed(SwapChain->ResizeBuffers(AppConfig::NumFrames , width , height , swapChainDesc.BufferDesc.Format , swapChainDesc.Flags));
-
-		CurrentBackBufferIndex = SwapChain->GetCurrentBackBufferIndex();
-
-		UpdateRenderTargetViews(Device , SwapChain , RTVDescriptorHeap , BackBuffer);
+		ThrowIfFailed(SwapChain->ResizeBuffers(AppConfig::NumFrames , 
+											   AppConfig::ClientWidth , 
+											   AppConfig::ClientHeight , 
+											   swapChainDesc.BufferDesc.Format , 
+											   swapChainDesc.Flags));
+		UpdateRenderTargetViews(mDevice , SwapChain , RTVDescriptorHeap , BackBuffer);
 	}
+}
+
+void Renderer::Flush()
+{
+	if (mDirectQueue)	mDirectQueue->Flush();
+	if (mComputeQueue)	mComputeQueue->Flush();
+	if (mCopyQueue)		mCopyQueue->Flush();
+}
+
+ID3D12Device2* Renderer::GetDevice()
+{
+	return mDevice;
+}
+
+ID3D12GraphicsCommandList2* Renderer::GetCommandList()
+{
+	if (!mDirectQueue)	return nullptr;
+
+	return mDirectQueue->GetCommandList();
+}
+
+void Renderer::TransitionResource(ID3D12GraphicsCommandList2* CommandList , ID3D12Resource* Resource , D3D12_RESOURCE_STATES beForeState , D3D12_RESOURCE_STATES AfterState)
+{
+	D3D12_RESOURCE_BARRIER barrier = {};
+	barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	barrier.Transition.pResource   = Resource;
+	barrier.Transition.StateBefore = beForeState;
+	barrier.Transition.StateAfter  = AfterState;
+	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+	CommandList->ResourceBarrier(1 , &barrier);
+}
+
+void Renderer::ClearRTV(ID3D12GraphicsCommandList2* CommandList , D3D12_CPU_DESCRIPTOR_HANDLE Rtv , FLOAT* ClearColor)
+{
+	CommandList->ClearRenderTargetView(Rtv , ClearColor , 0 , nullptr);
+}
+
+void Renderer::ClearDepth(ID3D12GraphicsCommandList2* CommandList , D3D12_CPU_DESCRIPTOR_HANDLE dsv , FLOAT depth)
+{
+	CommandList->ClearDepthStencilView(dsv , D3D12_CLEAR_FLAG_DEPTH , depth , 0 , 0 , nullptr);
+}
+
+void Renderer::ResizeDepthBuffer(int width , int height)
+{
+	// Flush any GPU commands might be referencing the depth buffer
+	Flush();
+
+	width  = std::max(1 , width);
+	height = std::max(1 , height);
+
+	D3D12_CLEAR_VALUE optimizedClearValue = {};
+	optimizedClearValue.Format       = DXGI_FORMAT_D32_FLOAT;
+	optimizedClearValue.DepthStencil = {1.0f, 0};
+
+	ThrowIfFailed(mDevice->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT) ,
+												  D3D12_HEAP_FLAG_NONE ,
+												  &CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D32_FLOAT , width , height , 1 , 0 , 1 , 0 , D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) ,
+												  D3D12_RESOURCE_STATE_DEPTH_WRITE ,
+												  &optimizedClearValue ,
+												  IID_PPV_ARGS(&mDepthBuffer)));
+
+	D3D12_DEPTH_STENCIL_VIEW_DESC Dsv = {};
+	Dsv.Format             = DXGI_FORMAT_D32_FLOAT;
+	Dsv.ViewDimension      = D3D12_DSV_DIMENSION_TEXTURE2D;
+	Dsv.Texture2D.MipSlice = 0;
+	Dsv.Flags              = D3D12_DSV_FLAG_NONE;
+
+	mDevice->CreateDepthStencilView(mDepthBuffer , &Dsv , mDSVHeap->GetCPUDescriptorHandleForHeapStart());
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE Renderer::GetCurrentRTV() const
+{
+	D3D12_CPU_DESCRIPTOR_HANDLE rtv(RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	rtv.ptr += mCurrentBackBufferIndex * RTVDescriptorSize;
+	return rtv;
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE Renderer::GetCurrentDSV() const
+{
+	return mDSVHeap->GetCPUDescriptorHandleForHeapStart();
+}
+
+ID3D12Resource* Renderer::GetCurrentBackBuffer() const
+{
+	return BackBuffer[mCurrentBackBufferIndex];
+}
+
+UINT Renderer::Present()
+{
+	UINT syncInterval = AppConfig::VSync ? 1 : 0;
+	UINT presentFlags = AppConfig::TearingSupported && !AppConfig::VSync ? DXGI_PRESENT_ALLOW_TEARING : 0;
+	ThrowIfFailed(SwapChain->Present(syncInterval , presentFlags));
+	return SwapChain->GetCurrentBackBufferIndex();
 }

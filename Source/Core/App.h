@@ -2,6 +2,7 @@
 
 class Window;
 class Renderer;
+class Scene;
 
 class App
 {
@@ -22,6 +23,7 @@ private:
 	~App();
 
 private:
-	Window* window     = nullptr;
+	Window*	  window   = nullptr;
 	Renderer* renderer = nullptr;
+	Scene*	  scene    = nullptr;
 };

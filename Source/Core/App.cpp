@@ -9,6 +9,8 @@
 #include "Renderer.h"
 #include "Window.h"
 #include "App.h"
+#include "Scene.h"
+#include "GameObject.h"
 
 LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lParam)
 {
@@ -62,11 +64,20 @@ LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lPara
 
 void App::Init(HINSTANCE hInstance)
 {
+	scene	 = new Scene;
 	window   = new Window(hInstance , L"OpenLight" , WndProc);
 	renderer = new Renderer;
-	renderer->Init(window->GetHwnd());
+	renderer->Init(window->GetHwnd(), scene);
 
 	::ShowWindow(window->GetHwnd() , SW_SHOW);
+
+	{
+		GameObject* o = new GameObject();
+		Shader* shader = new Shader(renderer->GetDevice() , "../Shader/HelloWorld.hlsl" , "vsmain" , "psmain");
+		o->SetShader(shader);
+		o->Load(renderer->GetDevice() , renderer->GetCommandList());
+		scene->AddObject(o);
+	}
 }
 
 void App::Update()
@@ -86,4 +97,5 @@ App::~App()
 {
 	if (window)		delete window;
 	if (renderer)	delete renderer;
+	if (scene)		delete scene;
 }

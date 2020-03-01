@@ -49,3 +49,4 @@ Build/OpenLight/OpenLight.sln
 Build/OpenLight/CMakeCache.txt
 Build/OpenLight/Source/CMakeFiles/generate.stamp
 *.stamp
+/CMakeFiles/
