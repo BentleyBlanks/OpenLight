@@ -17,7 +17,7 @@ struct VSOut
     float4 Position : SV_Position;
 };
 
-VSOut vsmain(VertexPosColor In)
+VSOut vsmain(VSIn In)
 {
     VSOut O;
     O.Position = mul(ModelViewProjectionCB.MVP, float4(In.Position, 1.0f));
