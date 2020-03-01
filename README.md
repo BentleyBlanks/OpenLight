@@ -3,7 +3,7 @@ Guide the astray.
 
 
 
-## Platform
+## Graphics API
 
-Visual Studio 2019, Windows 10
+DirectX 12
 
