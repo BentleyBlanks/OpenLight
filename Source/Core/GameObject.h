@@ -3,12 +3,14 @@
 #include <d3d12.h>
 #include "Shader.h"
 
+class CommandQueue;
+
 class GameObject
 {
 public:
 	GameObject();
 
-	void Load(ID3D12Device2* Device , ID3D12GraphicsCommandList2* CommandList);
+	void Load(ID3D12Device2* Device , CommandQueue* commandQueue);
 
 	void SetShader(const Shader* material);
 	const Shader* GetShader() const;
@@ -27,7 +29,6 @@ private:
 							  size_t elementSize                      ,
 							  const void* bufferData                  ,
 							  D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE);
-
 private:
 	ID3D12Resource* mVertexBuffer = nullptr;
 	D3D12_VERTEX_BUFFER_VIEW mVertexBufferView;

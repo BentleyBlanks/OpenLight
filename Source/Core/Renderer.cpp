@@ -277,7 +277,12 @@ void Flush(ID3D12CommandQueue* commandQueue , ID3D12Fence* Fence , uint64_t& Fen
 Renderer::Renderer()
 {
 	mScissorRect = D3D12_RECT{0 , 0 , LONG_MAX , LONG_MAX};
-	mViewport    = D3D12_VIEWPORT{0.0f, 0.0f, static_cast<float>(AppConfig::ClientWidth), static_cast<float>(AppConfig::ClientHeight)};
+	mViewport    = D3D12_VIEWPORT{0.0f, 
+								  0.0f, 
+								  static_cast<float>(AppConfig::ClientWidth), 
+								  static_cast<float>(AppConfig::ClientHeight),
+								  D3D12_MIN_DEPTH, 
+								  D3D12_MAX_DEPTH};
 }
 
 void Renderer::Init(HWND hWnd, Scene* scene)
@@ -307,6 +312,23 @@ void Renderer::Init(HWND hWnd, Scene* scene)
 	dsvHeapDesc.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	dsvHeapDesc.Flags          = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	ThrowIfFailed(mDevice->CreateDescriptorHeap(&dsvHeapDesc , IID_PPV_ARGS(&mDSVHeap)));
+
+	ResizeDepthBuffer(AppConfig::ClientWidth , AppConfig::ClientHeight);
+
+	{
+		float angle = 0.0f;
+		const DirectX::XMVECTOR rotateAxis = DirectX::XMVectorSet(0 , 1 , 1 , 0);
+		mModelMatrix = DirectX::XMMatrixRotationAxis(rotateAxis , DirectX::XMConvertToRadians(angle));
+
+		const DirectX::XMVECTOR eyePosition = DirectX::XMVectorSet(0 , 0 , -10 , 1);
+		const DirectX::XMVECTOR focusPoint  = DirectX::XMVectorSet(0 , 0 , 0 , 1);
+		const DirectX::XMVECTOR upDirection = DirectX::XMVectorSet(0 , 1 , 0 , 0);
+		mViewMatrix = DirectX::XMMatrixLookAtLH(eyePosition , focusPoint , upDirection);
+
+		mFov = 45.0f;
+		float aspectRatio = AppConfig::ClientWidth / static_cast<float>(AppConfig::ClientHeight);
+		mProjectionMatrix = DirectX::XMMatrixPerspectiveFovLH(DirectX::XMConvertToRadians(mFov) , aspectRatio , 0.1f , 100.0f);
+	}
 }
 
 void Renderer::Render()
@@ -332,18 +354,19 @@ void Renderer::Render()
 
 		CommandList->SetPipelineState(shader->GetPipelineState());
 		CommandList->SetGraphicsRootSignature(shader->GetRootSignature());
+		CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		CommandList->IASetVertexBuffers(0 , 1 , &(ob->GetVertexBufferView()));
 		CommandList->IASetIndexBuffer(&(ob->GetIndexBufferView()));
 		CommandList->RSSetViewports(1 , &mViewport);
 		CommandList->RSSetScissorRects(1 , &mScissorRect);
 		CommandList->OMSetRenderTargets(1 , &RTV , false , &DSV);
 
-		DirectX::XMMATRIX mvpMatrix;
+		DirectX::XMMATRIX mvpMatrix = DirectX::XMMatrixMultiply(mModelMatrix , mViewMatrix);;
+		mvpMatrix = DirectX::XMMatrixMultiply(mvpMatrix , mProjectionMatrix);
 		CommandList->SetGraphicsRoot32BitConstants(0 , sizeof(DirectX::XMMATRIX) / 4 , &mvpMatrix , 0);
 
 		CommandList->DrawIndexedInstanced(ob->GetNumIndices() , 1 , 0 , 0 , 0);
 	}
-
 
 	{
 		TransitionResource(CommandList , BackBuffer , D3D12_RESOURCE_STATE_RENDER_TARGET , D3D12_RESOURCE_STATE_PRESENT);
@@ -394,11 +417,21 @@ ID3D12Device2* Renderer::GetDevice()
 	return mDevice;
 }
 
-ID3D12GraphicsCommandList2* Renderer::GetCommandList()
+CommandQueue* Renderer::GetCommandQueue(D3D12_COMMAND_LIST_TYPE type)
 {
-	if (!mDirectQueue)	return nullptr;
+	switch (type)
+	{
+	case D3D12_COMMAND_LIST_TYPE_DIRECT:
+		return mDirectQueue;
 
-	return mDirectQueue->GetCommandList();
+	case D3D12_COMMAND_LIST_TYPE_COMPUTE:
+		return mComputeQueue;
+
+	case D3D12_COMMAND_LIST_TYPE_COPY:
+		return mComputeQueue;
+	}
+
+	return nullptr;
 }
 
 void Renderer::TransitionResource(ID3D12GraphicsCommandList2* CommandList , ID3D12Resource* Resource , D3D12_RESOURCE_STATES beForeState , D3D12_RESOURCE_STATES AfterState)

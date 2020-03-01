@@ -22,7 +22,7 @@ public:
 	void Flush();
 
 	ID3D12Device2* GetDevice();
-	ID3D12GraphicsCommandList2* GetCommandList();
+	CommandQueue* GetCommandQueue(D3D12_COMMAND_LIST_TYPE);
 
 private:
 	void TransitionResource(ID3D12GraphicsCommandList2* CommandList ,
@@ -51,9 +51,9 @@ private:
 	IDXGISwapChain4*      SwapChain    = nullptr;
 	ID3D12DescriptorHeap* RTVDescriptorHeap = nullptr;;
 	UINT				  RTVDescriptorSize;
-	ID3D12Resource*       BackBuffer[AppConfig::NumFrames];
+	ID3D12Resource*       BackBuffer[AppConfig::NumFrames] = {};
 	UINT				  mCurrentBackBufferIndex;
-	uint64_t			  mFenceValues[AppConfig::NumFrames];
+	uint64_t			  mFenceValues[AppConfig::NumFrames] = {};
 
 	CommandQueue* mDirectQueue  = nullptr;
 	CommandQueue* mComputeQueue = nullptr;

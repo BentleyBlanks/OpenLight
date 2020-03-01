@@ -109,7 +109,7 @@ void CommandQueue::Flush()
 
 ID3D12CommandQueue* CommandQueue::GetD3D12CommandQueue() const
 {
-	return nullptr;
+	return mD3DCommandQueue;
 }
 
 ID3D12CommandAllocator* CommandQueue::CreateCommandAllocator()

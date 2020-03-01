@@ -12,6 +12,8 @@ void LoadFile(const char* path, std::string& str)
 	if (!path)	return;
 
 	std::ifstream f(path);
+	if (!f.is_open())	return;
+
 	f.seekg(0 , std::ios::end);
 	str.reserve(f.tellg());
 	f.seekg(0 , std::ios::beg);
@@ -74,12 +76,9 @@ Shader::Shader(ID3D12Device2* Device, const char* path, const char* vsEntry, con
 	{
 		FeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
 	}
-	D3D12_ROOT_PARAMETER1 RootParameters[1];
-	RootParameters[0].ParameterType    = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-	RootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-	RootParameters->Constants.Num32BitValues = sizeof(DirectX::XMMATRIX) / 4;
-	RootParameters->Constants.ShaderRegister = 0;
-	RootParameters->Constants.RegisterSpace  = 0;
+
+	CD3DX12_ROOT_PARAMETER1 RootParameters[1];
+	RootParameters[0].InitAsConstants(sizeof(DirectX::XMMATRIX) / 4 , 0 , 0 , D3D12_SHADER_VISIBILITY_VERTEX);
 
 	D3D12_ROOT_SIGNATURE_FLAGS rootSignatureFlags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
 													D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS       |
@@ -87,13 +86,8 @@ Shader::Shader(ID3D12Device2* Device, const char* path, const char* vsEntry, con
 													D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS   |
 													D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
 
-	D3D12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDescription;
-	rootSignatureDescription.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
-	rootSignatureDescription.Desc_1_1.NumParameters = 1;
-	rootSignatureDescription.Desc_1_1.pParameters = RootParameters;
-	rootSignatureDescription.Desc_1_1.NumStaticSamplers = 0;
-	rootSignatureDescription.Desc_1_1.pStaticSamplers = nullptr;
-	rootSignatureDescription.Desc_1_1.Flags = rootSignatureFlags;
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDescription;
+	rootSignatureDescription.Init_1_1(_countof(RootParameters) , RootParameters , 0 , nullptr , rootSignatureFlags);
 
 	ID3DBlob* rootSignatureBlob = nullptr;
 	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDescription  , 
