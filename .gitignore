@@ -30,7 +30,7 @@
 *.vcxproj
 *.filters
 Build/OpenLight/Bin/Debug/OpenLight.exe
-*.cmake
+# *.cmake
 Build/OpenLight/CMakeFiles/3.8.0-rc4/CMakeDetermineCompilerABI_C.bin
 *.rule
 Build/OpenLight/CMakeFiles/cmake.check_cache
