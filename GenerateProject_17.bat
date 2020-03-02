@@ -2,8 +2,8 @@
 
 PUSHD %~dp0
 
-rd /s /q %~dp0\Build
-md %~dp0\Build
+REM rd /s /q %~dp0\Build
+REM md %~dp0\Build
 
 if not exist "%~dp0/Tools/CMake" (
     "%~dp0/Tools/7z/7z.exe" x "%~dp0/Tools/CMake.zip" -o"%~dp0/Tools/CMake/" -y
