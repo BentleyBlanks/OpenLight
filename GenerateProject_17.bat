@@ -5,6 +5,10 @@ PUSHD %~dp0
 rd /s /q %~dp0\Build
 md %~dp0\Build
 
+if not exist "%~dp0/Tools/CMake" (
+    "%~dp0/Tools/7z/7z.exe" x "%~dp0/Tools/CMake.zip" -o"%~dp0/Tools/CMake/" -y
+)
+
 SET CMAKE="%~dp0\Tools\CMake\bin\cmake.exe"
 SET CMAKE_GENERATOR="Visual Studio 15 2017 Win64"
 SET CMAKE_BINARY_DIR=Build
