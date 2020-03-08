@@ -2,11 +2,11 @@ SET(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/../Bin)
 
 SET(CORE_DIR Core)
 ADD_SUBDIRECTORY(${CORE_DIR})
-
+link_directories(Lib)
 
 FILE(GLOB CORE_SOURCE ${CORE_DIR}/*.*)
 SOURCE_GROUP("core" FILES ${CORE_SOURCE})
 
 
 ADD_EXECUTABLE(OpenLight  ${CORE_SOURCE} main.cpp )
-TARGET_LINK_LIBRARIES(OpenLight d3d12.lib dxgi.lib D3DCompiler.lib)
+TARGET_LINK_LIBRARIES(OpenLight d3d12.lib dxgi.lib D3DCompiler.lib FreeImage)

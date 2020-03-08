@@ -6,51 +6,49 @@
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
 #include <wrl.h>
+#include <chrono>
 #include "AppConfig.h"
 using namespace Microsoft;
-struct Vertex
-{
-	DirectX::XMFLOAT4 position; // POSH
-	DirectX::XMFLOAT4 color;    // COLOR
-	Vertex() {}
-	Vertex(const DirectX::XMFLOAT4& pos,
-		const DirectX::XMFLOAT4& c) :position(pos), color(c) {}
-};
+#ifdef min
+#undef min
+#endif
+
+#ifdef max
+#undef max
+#endif
 
 class Renderer
 {
 public:
 	Renderer();
 
-	void Init(HWND hWnd);
-	void Render();
+	virtual void Init(HWND hWnd);
+	virtual void Render();
 	void Resize(uint32_t width , uint32_t height);
 
-private:
-	void InitTriangle();
+	virtual uint64_t Signal(WRL::ComPtr<ID3D12CommandQueue> commandQueue, WRL::ComPtr<ID3D12Fence> Fence, uint64_t& FenceValue);
+	virtual void WaitForFenceValue(WRL::ComPtr<ID3D12Fence> Fence,
+		uint64_t FenceValue,
+		HANDLE FenceHandle,
+		std::chrono::milliseconds duration = std::chrono::milliseconds::max());
+	virtual void Flush(WRL::ComPtr<ID3D12CommandQueue> commandQueue, WRL::ComPtr<ID3D12Fence> Fence, uint64_t& FenceValue, HANDLE FenceEvent);
+protected:
 
-	ID3D12Device2*             Device       = nullptr;
-	ID3D12CommandQueue*        CommandQueue = nullptr;
-	IDXGISwapChain4*           SwapChain    = nullptr;
-	ID3D12GraphicsCommandList* CommandList  = nullptr;
-	ID3D12DescriptorHeap*	   RTVDescriptorHeap = nullptr;;
-	ID3D12Resource*            BackBuffer[AppConfig::NumFrames];
-	ID3D12CommandAllocator*	   CommandAllocator[AppConfig::NumFrames];
+	WRL::ComPtr<ID3D12Device2>             mDevice       = nullptr;
+	WRL::ComPtr<ID3D12CommandQueue>        mCommandQueue = nullptr;
+	WRL::ComPtr<IDXGISwapChain4>           mSwapChain    = nullptr;
+	WRL::ComPtr<ID3D12GraphicsCommandList> mCommandList  = nullptr;
+	WRL::ComPtr<ID3D12DescriptorHeap>	   mRTVDescriptorHeap = nullptr;;
+	WRL::ComPtr<ID3D12Resource>            mBackBuffer[AppConfig::NumFrames];
+	WRL::ComPtr<ID3D12CommandAllocator>	   mCommandAllocator[AppConfig::NumFrames];
 
-	uint32_t RTVDescriptorSize;
-	uint32_t CurrentBackBufferIndex;
+	uint32_t							   mRTVDescriptorSize;
+	uint32_t							   mCurrentBackBufferIndex;
 
-	// Triangle Test
-	WRL::ComPtr<ID3D12Resource> triangleVB = nullptr;
-	D3D12_VERTEX_BUFFER_VIEW	triangleVBView;
-	WRL::ComPtr<ID3D12PipelineState> pso = nullptr;
-	WRL::ComPtr<ID3D12RootSignature> signature = nullptr;
-	D3D12_VIEWPORT				viewport;
-	D3D12_RECT					scissorRect;
 
 	// Synchronization Objects
-	ID3D12Fence* Fence = nullptr;
-	uint64_t	 FenceValue = 0;
-	uint64_t	 FrameFenceValues[AppConfig::NumFrames] = {};
-	HANDLE		 FenceEvent;
+	WRL::ComPtr<ID3D12Fence> mFence = nullptr;
+	uint64_t	 mFenceValue = 0;
+	uint64_t	 mFrameFenceValues[AppConfig::NumFrames] = {};
+	HANDLE		 mFenceEvent;
 };

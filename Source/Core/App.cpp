@@ -7,6 +7,7 @@
 
 #include "AppConfig.h"
 #include "Renderer.h"
+#include "TextureCubeRenderer.h"
 #include "Window.h"
 #include "App.h"
 
@@ -63,7 +64,7 @@ LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lPara
 void App::Init(HINSTANCE hInstance)
 {
 	window   = new Window(hInstance , L"OpenLight" , WndProc);
-	renderer = new Renderer;
+	renderer = new TextureCubRenderer;
 	renderer->Init(window->GetHwnd());
 
 	::ShowWindow(window->GetHwnd() , SW_SHOW);

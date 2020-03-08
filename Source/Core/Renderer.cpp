@@ -1,15 +1,17 @@
 #include "Renderer.h"
 #include "Utility.h"
 #include <cassert>
-#include <chrono>
-#include <tchar.h>
-#ifdef min
-#undef min
-#endif
 
-#ifdef max
-#undef max
-#endif
+#include <tchar.h>
+
+struct Vertex
+{
+	DirectX::XMFLOAT4 position; // POSH
+	DirectX::XMFLOAT4 color;    // COLOR
+	Vertex() {}
+	Vertex(const DirectX::XMFLOAT4& pos,
+		const DirectX::XMFLOAT4& c) :position(pos), color(c) {}
+};
 
 void EnableDebugLayer()
 {
@@ -102,7 +104,7 @@ ID3D12Device2* CreateDevice(IDXGIAdapter4* adapter)
 	return d3d12Device2;
 }
 
-ID3D12CommandQueue* CreateCommandQueue(ID3D12Device2* device , D3D12_COMMAND_LIST_TYPE type)
+ID3D12CommandQueue* CreateCommandQueue(WRL::ComPtr<ID3D12Device2> device , D3D12_COMMAND_LIST_TYPE type)
 {
 	ID3D12CommandQueue* d3d12CommandQueue = nullptr;
 	
@@ -139,10 +141,10 @@ bool CheckTearingSupport()
 	return allowTearing == TRUE;
 }
 
-IDXGISwapChain4* CreateSwapChain(HWND hWnd , ID3D12CommandQueue* commandQueue , uint32_t width , uint32_t height , uint32_t bufferCount)
+WRL::ComPtr<IDXGISwapChain4> CreateSwapChain(HWND hWnd , WRL::ComPtr<ID3D12CommandQueue> commandQueue , uint32_t width , uint32_t height , uint32_t bufferCount)
 {
-	IDXGISwapChain4* dxgiSwapChain4 = nullptr;
-	IDXGIFactory4*   dxgiFactory4 = nullptr;
+	WRL::ComPtr<IDXGISwapChain4> dxgiSwapChain4 = nullptr;
+	WRL::ComPtr<IDXGIFactory4>   dxgiFactory4 = nullptr;
 
 	UINT createFactoryFlags = 0;
 #ifdef _DEBUG
@@ -165,11 +167,11 @@ IDXGISwapChain4* CreateSwapChain(HWND hWnd , ID3D12CommandQueue* commandQueue , 
 	swapChainDesc.Flags                 = CheckTearingSupport() ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
 
 	IDXGISwapChain1* swapChain1 = nullptr;
-	ThrowIfFailed(dxgiFactory4->CreateSwapChainForHwnd(commandQueue  ,
-													   hWnd          ,
-													   &swapChainDesc,
-													   nullptr       ,
-													   nullptr       ,
+	ThrowIfFailed(dxgiFactory4->CreateSwapChainForHwnd(commandQueue.Get()  ,
+													   hWnd				   ,
+													   &swapChainDesc      ,
+													   nullptr             ,
+													   nullptr             ,
 													   &swapChain1));
 
 	// Disable the Alt+Enter fullscreen toggle feature.
@@ -181,9 +183,9 @@ IDXGISwapChain4* CreateSwapChain(HWND hWnd , ID3D12CommandQueue* commandQueue , 
 	return dxgiSwapChain4;
 }
 
-ID3D12DescriptorHeap* CreateDescriptorHeap(ID3D12Device2* device , D3D12_DESCRIPTOR_HEAP_TYPE type , uint32_t numDescriptors)
+WRL::ComPtr<ID3D12DescriptorHeap> CreateDescriptorHeap(WRL::ComPtr<ID3D12Device2> device , D3D12_DESCRIPTOR_HEAP_TYPE type , uint32_t numDescriptors)
 {
-	ID3D12DescriptorHeap* descriptorHeap = nullptr;
+	WRL::ComPtr<ID3D12DescriptorHeap> descriptorHeap = nullptr;
 
 	D3D12_DESCRIPTOR_HEAP_DESC desc = {};
 	desc.NumDescriptors = numDescriptors;
@@ -193,7 +195,7 @@ ID3D12DescriptorHeap* CreateDescriptorHeap(ID3D12Device2* device , D3D12_DESCRIP
 	return descriptorHeap;
 }
 
-void UpdateRenderTargetViews(ID3D12Device2* device , IDXGISwapChain4* swapChain , ID3D12DescriptorHeap* descriptorHeap, ID3D12Resource** backBufferList)
+void UpdateRenderTargetViews(WRL::ComPtr<ID3D12Device2> device , WRL::ComPtr<IDXGISwapChain4> swapChain , WRL::ComPtr<ID3D12DescriptorHeap> descriptorHeap, WRL::ComPtr<ID3D12Resource> backBufferList [AppConfig::NumFrames])
 {
 	auto rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
@@ -212,7 +214,7 @@ void UpdateRenderTargetViews(ID3D12Device2* device , IDXGISwapChain4* swapChain 
 	}
 }
 
-ID3D12CommandAllocator* CreateCommandAllocator(ID3D12Device* device , D3D12_COMMAND_LIST_TYPE type)
+WRL::ComPtr<ID3D12CommandAllocator> CreateCommandAllocator(WRL::ComPtr<ID3D12Device> device , D3D12_COMMAND_LIST_TYPE type)
 {
 	ID3D12CommandAllocator* CommandAllocator = nullptr;
 	ThrowIfFailed(device->CreateCommandAllocator(type , IID_PPV_ARGS(&CommandAllocator)));
@@ -220,17 +222,17 @@ ID3D12CommandAllocator* CreateCommandAllocator(ID3D12Device* device , D3D12_COMM
 	return CommandAllocator;
 }
 
-ID3D12GraphicsCommandList* CreateCommandList(ID3D12Device2* device , ID3D12CommandAllocator* commandAllocator , D3D12_COMMAND_LIST_TYPE type)
+WRL::ComPtr<ID3D12GraphicsCommandList> CreateCommandList(WRL::ComPtr<ID3D12Device2> device , WRL::ComPtr<ID3D12CommandAllocator> commandAllocator , D3D12_COMMAND_LIST_TYPE type)
 {
 	ID3D12GraphicsCommandList* commandList = nullptr;
-	ThrowIfFailed(device->CreateCommandList(0 , type , commandAllocator , nullptr , IID_PPV_ARGS(&commandList)));
+	ThrowIfFailed(device->CreateCommandList(0 , type , commandAllocator.Get() , nullptr , IID_PPV_ARGS(&commandList)));
 
 	ThrowIfFailed(commandList->Close());
 
 	return commandList;
 }
 
-ID3D12Fence* CreateFence(ID3D12Device* device)
+WRL::ComPtr<ID3D12Fence> CreateFence(WRL::ComPtr<ID3D12Device> device)
 {
 	ID3D12Fence* Fence = nullptr;
 	ThrowIfFailed(device->CreateFence(0 , D3D12_FENCE_FLAG_NONE , IID_PPV_ARGS(&Fence)));
@@ -246,17 +248,17 @@ HANDLE CreateEventHandle()
 	return FenceEvent;
 }
 
-uint64_t Signal(ID3D12CommandQueue* commandQueue , ID3D12Fence* Fence , uint64_t& FenceValue)
+uint64_t Renderer::Signal(WRL::ComPtr<ID3D12CommandQueue> commandQueue , WRL::ComPtr<ID3D12Fence> Fence , uint64_t& FenceValue)
 {
 	uint64_t FenceValueForSignal = ++FenceValue;
-	ThrowIfFailed(commandQueue->Signal(Fence , FenceValueForSignal));
+	ThrowIfFailed(commandQueue->Signal(Fence.Get() , FenceValueForSignal));
 	return FenceValueForSignal;
 }
 
-void WaitForFenceValue(ID3D12Fence* Fence ,
+void Renderer::WaitForFenceValue(WRL::ComPtr<ID3D12Fence> Fence ,
 					   uint64_t FenceValue ,
 					   HANDLE FenceHandle ,
-					   std::chrono::milliseconds duration = std::chrono::milliseconds::max())
+					   std::chrono::milliseconds duration )
 {
 	if (Fence->GetCompletedValue() < FenceValue)
 	{
@@ -265,7 +267,7 @@ void WaitForFenceValue(ID3D12Fence* Fence ,
 	}
 }
 
-void Flush(ID3D12CommandQueue* commandQueue , ID3D12Fence* Fence , uint64_t& FenceValue , HANDLE FenceEvent)
+void Renderer::Flush(WRL::ComPtr<ID3D12CommandQueue> commandQueue , WRL::ComPtr<ID3D12Fence> Fence , uint64_t& FenceValue , HANDLE FenceEvent)
 {
 	uint64_t FenceValueForSignal = Signal(commandQueue , Fence , FenceValue);
 	WaitForFenceValue(Fence , FenceValueForSignal , FenceEvent);
@@ -282,67 +284,59 @@ void Renderer::Init(HWND hWnd)
 	AppConfig::TearingSupported = CheckTearingSupport();
 
 	IDXGIAdapter4* dxgiAdapter4 = GetAdapter(AppConfig::UseWarp);
-	Device = CreateDevice(dxgiAdapter4);
+	mDevice = CreateDevice(dxgiAdapter4);
 
-	CommandQueue = CreateCommandQueue(Device , D3D12_COMMAND_LIST_TYPE_DIRECT);
-	SwapChain	 = CreateSwapChain(hWnd , CommandQueue , AppConfig::ClientWidth , AppConfig::ClientHeight , AppConfig::NumFrames);
+	mCommandQueue = CreateCommandQueue(mDevice , D3D12_COMMAND_LIST_TYPE_DIRECT);
+	mSwapChain	 = CreateSwapChain(hWnd , mCommandQueue , AppConfig::ClientWidth , AppConfig::ClientHeight , AppConfig::NumFrames);
 
-	CurrentBackBufferIndex = SwapChain->GetCurrentBackBufferIndex();
+	mCurrentBackBufferIndex = mSwapChain->GetCurrentBackBufferIndex();
 
-	RTVDescriptorHeap = CreateDescriptorHeap(Device , D3D12_DESCRIPTOR_HEAP_TYPE_RTV, AppConfig::NumFrames);
-	RTVDescriptorSize = Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	mRTVDescriptorHeap = CreateDescriptorHeap(mDevice , D3D12_DESCRIPTOR_HEAP_TYPE_RTV, AppConfig::NumFrames);
+	mRTVDescriptorSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
-	UpdateRenderTargetViews(Device , SwapChain , RTVDescriptorHeap , BackBuffer);
+	UpdateRenderTargetViews(mDevice , mSwapChain , mRTVDescriptorHeap , mBackBuffer);
 
 	for (int i = 0; i < AppConfig::NumFrames; i++)
 	{
-		CommandAllocator[i] = CreateCommandAllocator(Device , D3D12_COMMAND_LIST_TYPE_DIRECT);
+		mCommandAllocator[i] = CreateCommandAllocator(mDevice , D3D12_COMMAND_LIST_TYPE_DIRECT);
 	}
 
-	CommandList = CreateCommandList(Device , CommandAllocator[CurrentBackBufferIndex] , D3D12_COMMAND_LIST_TYPE_DIRECT);
+	mCommandList = CreateCommandList(mDevice , mCommandAllocator[mCurrentBackBufferIndex] , D3D12_COMMAND_LIST_TYPE_DIRECT);
 
-	Fence = CreateFence(Device);
-	FenceEvent = CreateEventHandle();
+	mFence = CreateFence(mDevice);
+	mFenceEvent = CreateEventHandle();
 
 
-	InitTriangle();
 }
 
 void Renderer::Render()
 {
-	auto commandAllocator = CommandAllocator[CurrentBackBufferIndex];
-	auto backBuffer       = BackBuffer[CurrentBackBufferIndex];
+	auto commandAllocator = mCommandAllocator[mCurrentBackBufferIndex];
+	auto backBuffer       = mBackBuffer[mCurrentBackBufferIndex];
 
 	commandAllocator->Reset();
-	CommandList->Reset(commandAllocator , nullptr);
+	mCommandList->Reset(commandAllocator.Get() , nullptr);
 
-	CommandList->SetGraphicsRootSignature(signature.Get());
-	CommandList->SetPipelineState(pso.Get());
-	CommandList->RSSetViewports(1, &viewport);
-	CommandList->RSSetScissorRects(1, &scissorRect);
+
 
 	// Clear RenderTarget
 	D3D12_RESOURCE_BARRIER barrier = {};
 	barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource   = backBuffer;
+	barrier.Transition.pResource   = backBuffer.Get();
 	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
 	barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-	CommandList->ResourceBarrier(1 , &barrier);
+	mCommandList->ResourceBarrier(1 , &barrier);
 
 	FLOAT clearColor[] = {0.4f, 0.6f, 0.9f, 1.0f};
-	D3D12_CPU_DESCRIPTOR_HANDLE rtv(RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-	rtv.ptr += CurrentBackBufferIndex * RTVDescriptorSize;
+	D3D12_CPU_DESCRIPTOR_HANDLE rtv(mRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	rtv.ptr += mCurrentBackBufferIndex * mRTVDescriptorSize;
 
 	//ÉèÖÃäÖÈ¾Ä¿±ê
-	CommandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+	mCommandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
 
-	CommandList->ClearRenderTargetView(rtv , clearColor , 0 , nullptr);
-	CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	CommandList->IASetVertexBuffers(0, 1, &triangleVBView);
-	//Draw Call£¡£¡£¡
-	CommandList->DrawInstanced(3, 1, 0, 0);
+	mCommandList->ClearRenderTargetView(rtv , clearColor , 0 , nullptr);
 
 
 
@@ -350,24 +344,24 @@ void Renderer::Render()
 	barrier = {};
 	barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource   = backBuffer;
+	barrier.Transition.pResource   = backBuffer.Get();
 	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_PRESENT;
 	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-	CommandList->ResourceBarrier(1 , &barrier);
+	mCommandList->ResourceBarrier(1 , &barrier);
 
-	ThrowIfFailed(CommandList->Close());
-	ID3D12CommandList* const commandLists[] = {CommandList};
-	CommandQueue->ExecuteCommandLists(_countof(commandLists) , commandLists);
+	ThrowIfFailed(mCommandList->Close());
+	ID3D12CommandList* const commandLists[] = {mCommandList.Get()};
+	mCommandQueue->ExecuteCommandLists(_countof(commandLists) , commandLists);
 
 	UINT syncInterval = AppConfig::VSync ? 1 : 0;
 	UINT presentFlags = AppConfig::TearingSupported && !AppConfig::VSync ? DXGI_PRESENT_ALLOW_TEARING : 0;
-	ThrowIfFailed(SwapChain->Present(syncInterval , presentFlags));
+	ThrowIfFailed(mSwapChain->Present(syncInterval , presentFlags));
 
-	FrameFenceValues[CurrentBackBufferIndex] = Signal(CommandQueue , Fence , FenceValue);
+	mFrameFenceValues[mCurrentBackBufferIndex] = Signal(mCommandQueue , mFence , mFenceValue);
 
-	CurrentBackBufferIndex = SwapChain->GetCurrentBackBufferIndex();
-	WaitForFenceValue(Fence , FrameFenceValues[CurrentBackBufferIndex] , FenceEvent);
+	mCurrentBackBufferIndex = mSwapChain->GetCurrentBackBufferIndex();
+	WaitForFenceValue(mFence.Get() , mFrameFenceValues[mCurrentBackBufferIndex] , mFenceEvent);
 }
 
 void Renderer::Resize(uint32_t width , uint32_t height)
@@ -377,121 +371,21 @@ void Renderer::Resize(uint32_t width , uint32_t height)
 		AppConfig::ClientWidth  = std::max(1u , width);
 		AppConfig::ClientHeight = std::max(1u , height);
 
-		Flush(CommandQueue , Fence , FenceValue , FenceEvent);
+		Flush(mCommandQueue , mFence , mFenceValue , mFenceEvent);
 
 		for (int i = 0; i < AppConfig::NumFrames; i++)
 		{
-			BackBuffer[i]->Release();
-			FrameFenceValues[i] = FrameFenceValues[CurrentBackBufferIndex];
+			mBackBuffer[i]->Release();
+			mFrameFenceValues[i] = mFrameFenceValues[mCurrentBackBufferIndex];
 		}
 
 		DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
-		ThrowIfFailed(SwapChain->GetDesc(&swapChainDesc));
-		ThrowIfFailed(SwapChain->ResizeBuffers(AppConfig::NumFrames , width , height , swapChainDesc.BufferDesc.Format , swapChainDesc.Flags));
+		ThrowIfFailed(mSwapChain->GetDesc(&swapChainDesc));
+		ThrowIfFailed(mSwapChain->ResizeBuffers(AppConfig::NumFrames , width , height , swapChainDesc.BufferDesc.Format , swapChainDesc.Flags));
 
-		CurrentBackBufferIndex = SwapChain->GetCurrentBackBufferIndex();
+		mCurrentBackBufferIndex = mSwapChain->GetCurrentBackBufferIndex();
 
-		UpdateRenderTargetViews(Device , SwapChain , RTVDescriptorHeap , BackBuffer);
+		UpdateRenderTargetViews(mDevice , mSwapChain , mRTVDescriptorHeap , mBackBuffer);
 	}
 }
 
-void Renderer::InitTriangle()
-{
-	D3D12_INPUT_ELEMENT_DESC desc1[] =
-	{
-		{"POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-		{"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
-	};
-
-	Vertex triangleVertices[3] = { 
-		Vertex(DirectX::XMFLOAT4(-0.25f,-0.25f,1.f,1.f),DirectX::XMFLOAT4(1.f,0.f,0.f,1.f)),
-		Vertex(DirectX::XMFLOAT4(0.25f,0.25f,1.f,1.f),DirectX::XMFLOAT4(0.f,1.f,0.f,1.f)),
-		Vertex(DirectX::XMFLOAT4(0.25f,-0.25f,1.f,1.f),DirectX::XMFLOAT4(0.f,0.f,1.f,1.f))};
-	
-	ThrowIfFailed(Device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(triangleVertices)),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&triangleVB)));
-
-	UINT8* pVertexDataBegin = nullptr;			
-	CD3DX12_RANGE readRange(0, 0);		
-	ThrowIfFailed(triangleVB->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));		
-	std::memcpy(pVertexDataBegin, triangleVertices, sizeof(triangleVertices));			
-	triangleVB->Unmap(0, nullptr);
-
-	triangleVBView.BufferLocation = triangleVB->GetGPUVirtualAddress();
-	triangleVBView.StrideInBytes = sizeof(Vertex);
-	triangleVBView.SizeInBytes = sizeof(triangleVertices);
-
-	WRL::ComPtr<ID3DBlob> vs = nullptr;
-	WRL::ComPtr<ID3DBlob> ps = nullptr;
-
-#if defined(_DEBUG)		
-	UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#else
-	UINT compileFlags = 0;			
-#endif 
-	
-	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\TriangleVS.hlsl",
-		nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vs, nullptr));	
-
-
-	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\TrianglePS.hlsl",
-		nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &ps, nullptr));
-
-	{
-		D3D12_ROOT_SIGNATURE_DESC stRootSignatureDesc =
-		{
-			0
-			, nullptr
-			, 0
-			, nullptr
-			, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
-		};
-		WRL::ComPtr<ID3DBlob> pISignatureBlob;
-		WRL::ComPtr<ID3DBlob> pIErrorBlob;
-		ThrowIfFailed(D3D12SerializeRootSignature(
-			&stRootSignatureDesc
-			, D3D_ROOT_SIGNATURE_VERSION_1
-			, &pISignatureBlob
-			, &pIErrorBlob));
-
-
-		ThrowIfFailed(Device->CreateRootSignature(0
-			, pISignatureBlob->GetBufferPointer()
-			, pISignatureBlob->GetBufferSize()
-			, IID_PPV_ARGS(&signature)));
-
-	}
-
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
-	memset(&psoDesc, 0, sizeof(psoDesc));
-	psoDesc.InputLayout = { desc1, _countof(desc1) };
-	psoDesc.pRootSignature = signature.Get();
-	psoDesc.VS.pShaderBytecode = vs->GetBufferPointer();
-	psoDesc.VS.BytecodeLength = vs->GetBufferSize();
-	psoDesc.PS.pShaderBytecode = ps->GetBufferPointer();
-	psoDesc.PS.BytecodeLength = ps->GetBufferSize();
-	psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
-	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
-	psoDesc.BlendState.AlphaToCoverageEnable = FALSE;
-	psoDesc.BlendState.IndependentBlendEnable = FALSE;
-	psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-	psoDesc.DepthStencilState.DepthEnable = FALSE;
-	psoDesc.DepthStencilState.StencilEnable = FALSE;
-	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDesc.NumRenderTargets = 1;
-	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-	psoDesc.SampleMask = UINT_MAX;
-	psoDesc.SampleDesc.Count = 1;
-	ThrowIfFailed(Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pso)));
-
-
-	viewport = { 0.0f, 0.0f
-		, static_cast<float>(AppConfig::ClientWidth), static_cast<float>(AppConfig::ClientHeight), D3D12_MIN_DEPTH, D3D12_MAX_DEPTH };
-	scissorRect = { 0, 0
-		, static_cast<LONG>(AppConfig::ClientWidth), static_cast<LONG>(AppConfig::ClientHeight) };
-}
