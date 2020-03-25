@@ -1,7 +1,7 @@
 #include "Renderer.h"
 #include <cassert>
 #include <chrono>
-#include <d3dx12.h>
+#include "d3dx12.h"
 #include "Utility.h"
 #include "Scene.h"
 #include "GameObject.h"
