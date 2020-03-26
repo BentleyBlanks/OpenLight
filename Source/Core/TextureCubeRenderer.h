@@ -17,8 +17,12 @@ protected:
 	D3D12_INDEX_BUFFER_VIEW				mTriIBView;
 	WRL::ComPtr<ID3D12Resource1>		mTexture = nullptr;
 	WRL::ComPtr<ID3D12DescriptorHeap>	mSRVHeap = nullptr;
+	WRL::ComPtr<ID3D12DescriptorHeap>	mSamplerHeap = nullptr;
 	WRL::ComPtr<ID3D12PipelineState>	mPSO = nullptr;
 	WRL::ComPtr<ID3D12RootSignature>	mRootSignature = nullptr;
 	D3D12_VIEWPORT						mViewport;
 	D3D12_RECT							mScissorRect;
+
+	int									mSamplerCount = 3;
+	int									mSamplerIndex = 0;
 };

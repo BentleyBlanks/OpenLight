@@ -38,9 +38,9 @@ void TextureCubRenderer::Init(HWND hWnd)
 	// 创建顶点
 	Vertex triangleVertices[4] = {
 	Vertex(DirectX::XMFLOAT4(-0.5f,-0.5f,1.f,1.f),DirectX::XMFLOAT2(0.f,0.f)),
-	Vertex(DirectX::XMFLOAT4(-0.5f,0.5f,1.f,1.f),DirectX::XMFLOAT2(0.f,1.f)),
-	Vertex(DirectX::XMFLOAT4(0.5f,0.5f,1.f,1.f),DirectX::XMFLOAT2(1.f,1.f)), 
-	Vertex(DirectX::XMFLOAT4(0.5f,-0.5f,1.f,1.f),DirectX::XMFLOAT2(1.f,0.f))};
+	Vertex(DirectX::XMFLOAT4(-0.5f,0.5f,1.f,1.f),DirectX::XMFLOAT2(0.f,3.f)),
+	Vertex(DirectX::XMFLOAT4(0.5f,0.5f,1.f,1.f),DirectX::XMFLOAT2(3.f,3.f)), 
+	Vertex(DirectX::XMFLOAT4(0.5f,-0.5f,1.f,1.f),DirectX::XMFLOAT2(3.f,0.f))};
 
 	UINT indices[6] = { 0,1,2 , 2,3,0 };
 	ThrowIfFailed(mDevice->CreateCommittedResource(
@@ -97,17 +97,17 @@ void TextureCubRenderer::Init(HWND hWnd)
 
 	
 	// 创建根签名参数
-	CD3DX12_ROOT_PARAMETER1 rootParameters[1];
-	CD3DX12_DESCRIPTOR_RANGE1 descRange;
-	descRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE);
-	rootParameters[0].InitAsDescriptorTable(1, &descRange,D3D12_SHADER_VISIBILITY_PIXEL);
-	// 采样器
-	CD3DX12_STATIC_SAMPLER_DESC sampleDesc(0);
-	sampleDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	CD3DX12_ROOT_PARAMETER1 rootParameters[2];
+	CD3DX12_DESCRIPTOR_RANGE1 descRange[2];
+	descRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE);
+	descRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0);
+	rootParameters[0].InitAsDescriptorTable(1, &descRange[0],D3D12_SHADER_VISIBILITY_PIXEL);
+	rootParameters[1].InitAsDescriptorTable(1, &descRange[1], D3D12_SHADER_VISIBILITY_PIXEL);
+	
 	// 根签名描述
 	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
-	rootSignatureDesc.Init_1_1(1, rootParameters,
-		1, &sampleDesc,
+	rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters,
+		0, nullptr,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 	// 创建根签名
 	WRL::ComPtr<ID3DBlob> pSignatureBlob;
@@ -156,6 +156,14 @@ void TextureCubRenderer::Init(HWND hWnd)
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(mDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSRVHeap)));
 
+	// 创建 Sampler Heap
+	D3D12_DESCRIPTOR_HEAP_DESC samplerHeapDesc = {};
+	samplerHeapDesc.NumDescriptors = mSamplerCount;
+	samplerHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+	samplerHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	ThrowIfFailed(mDevice->CreateDescriptorHeap(&samplerHeapDesc, IID_PPV_ARGS(&mSamplerHeap)));
+
+
 
 	// 创建 Texture Resource
 	auto commandAllocator = mCommandAllocator[0];
@@ -175,10 +183,53 @@ void TextureCubRenderer::Init(HWND hWnd)
 	srvDesc.Texture2D.MipLevels = 1;
 	mDevice->CreateShaderResourceView(mTexture.Get(), &srvDesc, mSRVHeap->GetCPUDescriptorHandleForHeapStart());
 
+	// 创建 Sampler
+	auto samplerDescriptorOffset = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE samplerHandle(mSamplerHeap->GetCPUDescriptorHandleForHeapStart());
+
+	D3D12_SAMPLER_DESC samplerDesc = {  };
+	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	samplerDesc.MinLOD = 0.f;
+	samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+	samplerDesc.MipLODBias = 0.0f;
+	samplerDesc.MaxAnisotropy = 1;
+	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+
+	// Sampler 1
+	samplerDesc.BorderColor[0] = 1.0f;
+	samplerDesc.BorderColor[1] = 0.0f;
+	samplerDesc.BorderColor[2] = 1.0f;
+	samplerDesc.BorderColor[3] = 1.0f;
+	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	mDevice->CreateSampler(&samplerDesc, samplerHandle);
+	
+	// Sampler 2
+	samplerHandle.Offset(samplerDescriptorOffset);
+	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	mDevice->CreateSampler(&samplerDesc, samplerHandle);
+
+	// Sampler 3
+	samplerHandle.Offset(samplerDescriptorOffset);
+	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_MIRROR;
+	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_MIRROR;
+	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_MIRROR;
+	mDevice->CreateSampler(&samplerDesc, samplerHandle);
+
+
 }
 
 void TextureCubRenderer::Render()
 {
+	if (GetAsyncKeyState('S') & 0x8000)
+	{
+		mSamplerIndex = (++mSamplerIndex) % mSamplerCount;
+		Sleep(100);
+	}
+	
 	auto commandAllocator = mCommandAllocator[mCurrentBackBufferIndex];
 	auto backBuffer = mBackBuffer[mCurrentBackBufferIndex];
 
@@ -187,9 +238,13 @@ void TextureCubRenderer::Render()
 
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 	mCommandList->SetPipelineState(mPSO.Get());
-	ID3D12DescriptorHeap* ppHeaps[] = { mSRVHeap.Get() };
-	mCommandList->SetDescriptorHeaps(1, ppHeaps);
+	ID3D12DescriptorHeap* ppHeaps[] = { mSRVHeap.Get(),mSamplerHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 	mCommandList->SetGraphicsRootDescriptorTable(0, mSRVHeap->GetGPUDescriptorHandleForHeapStart());
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(mSamplerHeap->GetGPUDescriptorHandleForHeapStart(),
+		mSamplerIndex,
+		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER));
+	mCommandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
 	mCommandList->RSSetViewports(1, &mViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
 
