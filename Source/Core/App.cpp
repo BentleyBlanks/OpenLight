@@ -8,9 +8,17 @@
 #include "AppConfig.h"
 #include "Renderer.h"
 #include "TextureCubeRenderer.h"
+#include "CubeRenderer.h"
 #include "Window.h"
 #include "App.h"
-
+#include<windowsx.h>
+extern int  gMouseX;
+extern int  gMouseY;
+extern int  gLastMouseX;
+extern int  gLastMouseY;
+extern bool gMouseDown;
+extern bool gMouseMove;
+extern HWND  gHwnd;
 LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lParam)
 {
 	switch (message)
@@ -37,6 +45,17 @@ LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lPara
 			App::GetInstance().GetWindow()->SetFullscreen(!AppConfig::Fullscreen);
 			}
 			break;
+		case WM_LBUTTONDOWN:
+			gLastMouseX = GET_X_LPARAM(lParam);
+			gLastMouseY = GET_Y_LPARAM(lParam);
+			return true;
+		case WM_MOUSEMOVE:
+			//		std::cout << io.MousePos.x << "  " << io.MousePos.y << std::endl;
+			if (((wParam & MK_LBUTTON) != 0))
+				gMouseMove = true;
+			gMouseX = GET_X_LPARAM(lParam);
+			gMouseY = GET_Y_LPARAM(lParam);
+			return true;
 		}
 		break;
 	}
@@ -64,9 +83,8 @@ LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lPara
 void App::Init(HINSTANCE hInstance)
 {
 	window   = new Window(hInstance , L"OpenLight" , WndProc);
-	renderer = new TextureCubRenderer;
+	renderer = new CubeRenderer;
 	renderer->Init(window->GetHwnd());
-
 	::ShowWindow(window->GetHwnd() , SW_SHOW);
 }
 

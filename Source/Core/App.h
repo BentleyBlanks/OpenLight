@@ -1,5 +1,5 @@
 #pragma once
-
+#include "Timer.h"
 class Window;
 class Renderer;
 
