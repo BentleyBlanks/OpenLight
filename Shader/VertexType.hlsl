@@ -26,3 +26,9 @@ struct StandardQuadPSInput
     float4 positionH    :SV_POSITION;
     float2 texcoord     :TEXCOORD;
 };
+
+struct SkyBoxPSInput
+{
+    float4 positionH    :SV_POSITION;
+    float3 positionL    :POSITION;
+};

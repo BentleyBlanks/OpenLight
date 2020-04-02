@@ -21,6 +21,8 @@ public:
 	virtual void Render() override;
 
 protected:
+	void InitSkyBox();
+	void RenderSkyBox();
 	void Update();
 	void InitPostprocess();
 	void FPS();
@@ -51,6 +53,22 @@ protected:
 	D3D12_VERTEX_BUFFER_VIEW			mQuadVBView;
 	D3D12_INDEX_BUFFER_VIEW				mQuadIBView;
 	WRL::ComPtr<ID3D12Resource1>		mSceneColorBuffer[AppConfig::NumFrames];
+
+	// Sky Box
+	WRL::ComPtr<ID3D12Resource1>		mSkyBoxVB				= nullptr;
+	WRL::ComPtr<ID3D12Resource1>		mSkyBoxIB				= nullptr;
+	D3D12_VERTEX_BUFFER_VIEW			mSkyBoxVBView;
+	D3D12_INDEX_BUFFER_VIEW				mSkyBoxIBView;
+	UINT								mSkyBoxSRVIndex;
+	std::shared_ptr<ObjMesh>			mSkyBoxMesh = nullptr;
+	WRL::ComPtr<ID3D12Resource1>		mSkyBoxEnvMap = nullptr;
+	WRL::ComPtr<ID3D12RootSignature>	mSkyBoxSignature = nullptr;
+	WRL::ComPtr<ID3D12PipelineState>	mSkyBoxPSO = nullptr;
+	WRL::ComPtr<ID3D12PipelineState>	mSkyBoxPSORGB32 = nullptr;
+	WRL::ComPtr<ID3D12DescriptorHeap>	mSkyBoxSRVHeap = nullptr;
+	WRL::ComPtr<ID3D12Resource1>		mSkyBoxCBTrans = nullptr;
+	CBTrans*							mSkyBoxCBTransGPUPtr = nullptr;
+	
 
 
 	// ÂþÓÎÏà»ú

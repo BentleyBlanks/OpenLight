@@ -69,7 +69,6 @@ void CubeRenderer::Init(HWND hWnd)
 		uploadDesc.Flags = D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS;
 
 		ThrowIfFailed(mDevice->CreateHeap(&uploadDesc, IID_PPV_ARGS(&mUploadHeap)));
-
 	}
 
 	// 创建 VB IB CB
@@ -289,6 +288,7 @@ void CubeRenderer::Init(HWND hWnd)
 
 
 	InitPostprocess();
+	InitSkyBox();
 
 }
 
@@ -314,32 +314,6 @@ void CubeRenderer::Render()
 		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 		mCommandList->ResourceBarrier(1, &barrier);
 	}
-
-
-
-	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
-	if (mGammaCorrect)
-		mCommandList->SetPipelineState(mPSORGBA32.Get());
-	else
-		mCommandList->SetPipelineState(mPSO.Get());
-	ID3D12DescriptorHeap* ppHeaps[] = { mSRVCBVHeap.Get(),mSamplerHeap.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-
-	// 设置SRV
-	mCommandList->SetGraphicsRootDescriptorTable(0, mSRVCBVHeap->GetGPUDescriptorHandleForHeapStart());
-	
-	// 设置 Sampler
-	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(mSamplerHeap->GetGPUDescriptorHandleForHeapStart(),
-		mSamplerIndex,
-		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER));
-	mCommandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
-	
-	// 设置 CBV
-	mCommandList->SetGraphicsRootDescriptorTable(2,
-		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSRVCBVHeap->GetGPUDescriptorHandleForHeapStart(),
-			1,
-			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)));
-
 
 
 	mCommandList->RSSetViewports(1, &mViewport);
@@ -374,6 +348,33 @@ void CubeRenderer::Render()
 	mCommandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
 
 	mCommandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+
+
+	RenderSkyBox();
+
+	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+	if (mGammaCorrect)
+		mCommandList->SetPipelineState(mPSORGBA32.Get());
+	else
+		mCommandList->SetPipelineState(mPSO.Get());
+	ID3D12DescriptorHeap* ppHeaps[] = { mSRVCBVHeap.Get(),mSamplerHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+	// 设置SRV
+	mCommandList->SetGraphicsRootDescriptorTable(0, mSRVCBVHeap->GetGPUDescriptorHandleForHeapStart());
+
+	// 设置 Sampler
+	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(mSamplerHeap->GetGPUDescriptorHandleForHeapStart(),
+		mSamplerIndex,
+		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER));
+	mCommandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
+
+	// 设置 CBV
+	mCommandList->SetGraphicsRootDescriptorTable(2,
+		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSRVCBVHeap->GetGPUDescriptorHandleForHeapStart(),
+			1,
+			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)));
+
 	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	mCommandList->IASetVertexBuffers(0, 1, &mCubeMeshVBView);
 	mCommandList->IASetIndexBuffer(&mCubeMeshIBView);
@@ -439,6 +440,194 @@ void CubeRenderer::Render()
 	WaitForFenceValue(mFence.Get(), mFrameFenceValues[mCurrentBackBufferIndex], mFenceEvent);
 }
 
+void CubeRenderer::InitSkyBox()
+{
+	mSkyBoxMesh = ObjMeshLoader::loadObjMeshFromFile("F:\\OpenLight\\Sphere.obj");
+	auto commandAllocator = mCommandAllocator[0];
+	ThrowIfFailed(commandAllocator->Reset());
+	ThrowIfFailed(mCommandList->Reset(commandAllocator.Get(), nullptr));
+	mSkyBoxEnvMap = TextureMgr::LoadTexture2DFromFile("F:\\OpenLight\\HDR_029_Sky_Cloudy_Ref.exr",
+		mDevice,
+		mCommandList,
+		mCommandQueue);
+
+	ThrowIfFailed(mDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(StandardVertex) * mSkyBoxMesh->submeshs[0].vertices.size()),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mSkyBoxVB)));
+	ThrowIfFailed(mDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(UINT) * mSkyBoxMesh->submeshs[0].indices.size()),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mSkyBoxIB)));
+
+	{
+		void* p = nullptr;
+		ThrowIfFailed(mSkyBoxVB->Map(0, nullptr, &p));
+		std::memcpy(p, &mSkyBoxMesh->submeshs[0].vertices[0], sizeof(StandardVertex) * mSkyBoxMesh->submeshs[0].vertices.size());
+		mSkyBoxVB->Unmap(0,nullptr);
+		ThrowIfFailed(mSkyBoxIB->Map(0, nullptr, &p));
+		std::memcpy(p, &mSkyBoxMesh->submeshs[0].indices[0], sizeof(UINT) * mSkyBoxMesh->submeshs[0].indices.size());
+		mSkyBoxIB->Unmap(0,nullptr);
+	}
+	mSkyBoxVBView.BufferLocation = mSkyBoxVB->GetGPUVirtualAddress();
+	mSkyBoxVBView.StrideInBytes = sizeof(StandardVertex);
+	mSkyBoxVBView.SizeInBytes = sizeof(StandardVertex) * mSkyBoxMesh->submeshs[0].vertices.size();
+	mSkyBoxIBView.BufferLocation = mSkyBoxIB->GetGPUVirtualAddress();
+	mSkyBoxIBView.Format = DXGI_FORMAT_R32_UINT;
+	mSkyBoxIBView.SizeInBytes = sizeof(UINT) * mSkyBoxMesh->submeshs[0].indices.size();
+
+	// 创建 InputLayout
+	D3D12_INPUT_ELEMENT_DESC inputDesc[] =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TANGENT",0,DXGI_FORMAT_R32G32B32_FLOAT,0,24,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	};
+
+	WRL::ComPtr<ID3DBlob> vs;
+	WRL::ComPtr<ID3DBlob> ps;
+
+#if defined(_DEBUG)		
+	UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+	UINT compileFlags = 0;
+#endif
+
+	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\SkyBoxVS.hlsl",
+		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "SkyBoxMainVS", "vs_5_0", compileFlags, 0, &vs, nullptr));
+	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\SkyBoxPS.hlsl",
+		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "SkyBoxMainPS", "ps_5_0", compileFlags, 0, &ps, nullptr));
+
+	CD3DX12_ROOT_PARAMETER1 rootParameters[2];
+	CD3DX12_DESCRIPTOR_RANGE1 descRange[2];
+	descRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE);
+	descRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0);
+	rootParameters[0].InitAsDescriptorTable(1, &descRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
+	rootParameters[1].InitAsDescriptorTable(1, &descRange[1], D3D12_SHADER_VISIBILITY_ALL);
+	D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
+	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	samplerDesc.MinLOD = 0.f;
+	samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+	samplerDesc.MipLODBias = 0.0f;
+	samplerDesc.MaxAnisotropy = 1;
+	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+	rootSignatureDesc.Init_1_1(2, rootParameters,
+		1, &samplerDesc,
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	WRL::ComPtr<ID3DBlob> pSignatureBlob;
+	WRL::ComPtr<ID3DBlob> pErrorBlob;
+	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(
+		&rootSignatureDesc,
+		D3D_ROOT_SIGNATURE_VERSION_1_1,
+		&pSignatureBlob,
+		&pErrorBlob));
+	ThrowIfFailed(mDevice->CreateRootSignature(0,
+		pSignatureBlob->GetBufferPointer(),
+		pSignatureBlob->GetBufferSize(),
+		IID_PPV_ARGS(&mSkyBoxSignature)));
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = { inputDesc, _countof(inputDesc) };
+	psoDesc.pRootSignature = mSkyBoxSignature.Get();
+	psoDesc.VS.pShaderBytecode = vs->GetBufferPointer();
+	psoDesc.VS.BytecodeLength = vs->GetBufferSize();
+	psoDesc.PS.pShaderBytecode = ps->GetBufferPointer();
+	psoDesc.PS.BytecodeLength = ps->GetBufferSize();
+	psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+	psoDesc.BlendState.AlphaToCoverageEnable = FALSE;
+	psoDesc.BlendState.IndependentBlendEnable = FALSE;
+	psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	psoDesc.DepthStencilState.DepthEnable = TRUE;
+	psoDesc.DepthStencilState.StencilEnable = FALSE;
+	psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.SampleDesc.Count = 1;
+	ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mSkyBoxPSO)));
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mSkyBoxPSORGB32)));
+	
+
+	ThrowIfFailed(mDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(PADCB(sizeof(CBTrans))),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mSkyBoxCBTrans)));
+
+	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+	srvHeapDesc.NumDescriptors = 2;
+	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	ThrowIfFailed(mDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSkyBoxSRVHeap)));
+
+	// 创建 Texture SRV
+	{
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MipLevels = 1;
+		mDevice->CreateShaderResourceView(mSkyBoxEnvMap.Get(), &srvDesc, mSkyBoxSRVHeap->GetCPUDescriptorHandleForHeapStart());
+	}
+
+	{
+		CD3DX12_CPU_DESCRIPTOR_HANDLE handle(mSkyBoxSRVHeap->GetCPUDescriptorHandleForHeapStart(),
+			1,
+			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+		cbvDesc.BufferLocation = mSkyBoxCBTrans->GetGPUVirtualAddress();
+		cbvDesc.SizeInBytes = PADCB(sizeof(CBTrans));
+		mDevice->CreateConstantBufferView(&cbvDesc, handle);
+		ThrowIfFailed(mSkyBoxCBTrans->Map(0, nullptr, (void**)&mSkyBoxCBTransGPUPtr));
+	}
+
+}
+
+void CubeRenderer::RenderSkyBox()
+{
+	mCommandList->SetGraphicsRootSignature(mSkyBoxSignature.Get());
+	if (mGammaCorrect)
+		mCommandList->SetPipelineState(mSkyBoxPSORGB32.Get());
+	else
+		mCommandList->SetPipelineState(mSkyBoxPSO.Get());
+
+	ID3D12DescriptorHeap* ppHeaps[] = { mSkyBoxSRVHeap.Get()};
+	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+	// 设置SRV
+	mCommandList->SetGraphicsRootDescriptorTable(0, mSkyBoxSRVHeap->GetGPUDescriptorHandleForHeapStart());
+
+	// 设置 CBV
+	mCommandList->SetGraphicsRootDescriptorTable(1,
+		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSkyBoxSRVHeap->GetGPUDescriptorHandleForHeapStart(),
+			1,
+			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)));
+
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	mCommandList->IASetVertexBuffers(0, 1, &mSkyBoxVBView);
+	mCommandList->IASetIndexBuffer(&mSkyBoxIBView);
+	//Draw Call！！！
+	mCommandList->DrawIndexedInstanced(mSkyBoxMesh->submeshs[0].indices.size(), 1, 0, 0, 0);
+
+}
+
 void CubeRenderer::Update()
 {
 	FPS();
@@ -484,6 +673,11 @@ void CubeRenderer::Update()
 	XMStoreFloat4x4(&mCBTransGPUPtr->wvp, XMMatrixTranspose(vp));
 	XMStoreFloat4x4(&mCBTransGPUPtr->world, XMMatrixTranspose(world));
 	XMStoreFloat4x4(&mCBTransGPUPtr->invTranspose, XMMatrixTranspose(world));
+
+	world = XMMatrixScaling(10, 10, 10);
+	XMStoreFloat4x4(&mSkyBoxCBTransGPUPtr->wvp, XMMatrixTranspose(world * vp));
+	XMStoreFloat4x4(&mSkyBoxCBTransGPUPtr->world, XMMatrixTranspose(world));
+	XMStoreFloat4x4(&mSkyBoxCBTransGPUPtr->invTranspose, XMMatrixTranspose(world));
 }
 
 struct QuadVertex

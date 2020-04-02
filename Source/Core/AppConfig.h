@@ -9,7 +9,7 @@ namespace AppConfig
 	static uint32_t ClientHeight   = 720;
 
 	static bool UseWarp          = false;
-	static bool VSync            = true;
+	static bool VSync            = false;
 	static bool TearingSupported = false;
 	static bool Fullscreen       = false;
 };
