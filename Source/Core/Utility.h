@@ -6,6 +6,7 @@
 
 #define D3D_HLSL_DEFUALT_INCLUDE ((ID3DInclude*)(UINT_PTR)1)
 #define PAD(x,y)		((x+ (y-1) )&(~(y-1)))
+#define PADCB(x)		PAD(x,256)
 using namespace DirectX;
 
 inline void ThrowIfFailed(HRESULT hr)

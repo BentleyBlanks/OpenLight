@@ -44,6 +44,7 @@ protected:
 
 	uint32_t							   mRTVDescriptorSize;
 	uint32_t							   mCurrentBackBufferIndex;
+	HWND								   mHWND;
 
 
 	// Synchronization Objects

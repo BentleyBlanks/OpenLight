@@ -185,14 +185,17 @@ void CubeRenderer::Init(HWND hWnd)
 	psoDesc.BlendState.AlphaToCoverageEnable = FALSE;
 	psoDesc.BlendState.IndependentBlendEnable = FALSE;
 	psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-	psoDesc.DepthStencilState.DepthEnable = FALSE;
+	psoDesc.DepthStencilState.DepthEnable = TRUE;
 	psoDesc.DepthStencilState.StencilEnable = FALSE;
+	psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
 	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDesc.NumRenderTargets = 1;
 	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	psoDesc.SampleMask = UINT_MAX;
 	psoDesc.SampleDesc.Count = 1;
 	ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSO)));
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSORGBA32)));
 
 	mViewport = { 0.0f, 0.0f
 		, static_cast<float>(AppConfig::ClientWidth), static_cast<float>(AppConfig::ClientHeight), D3D12_MIN_DEPTH, D3D12_MAX_DEPTH };
@@ -285,6 +288,8 @@ void CubeRenderer::Init(HWND hWnd)
 	mDevice->CreateSampler(&samplerDesc, samplerHandle);
 
 
+	InitPostprocess();
+
 }
 
 void CubeRenderer::Render()
@@ -293,12 +298,30 @@ void CubeRenderer::Render()
 
 	auto commandAllocator = mCommandAllocator[mCurrentBackBufferIndex];
 	auto backBuffer = mBackBuffer[mCurrentBackBufferIndex];
-
+	
 	commandAllocator->Reset();
 	mCommandList->Reset(commandAllocator.Get(), nullptr);
 
+	// 切换 Scene Color 状态	
+	if(mGammaCorrect)
+	{
+		D3D12_RESOURCE_BARRIER barrier = {};
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		barrier.Transition.pResource = mSceneColorBuffer[mCurrentBackBufferIndex].Get();
+		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		mCommandList->ResourceBarrier(1, &barrier);
+	}
+
+
+
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
-	mCommandList->SetPipelineState(mPSO.Get());
+	if (mGammaCorrect)
+		mCommandList->SetPipelineState(mPSORGBA32.Get());
+	else
+		mCommandList->SetPipelineState(mPSO.Get());
 	ID3D12DescriptorHeap* ppHeaps[] = { mSRVCBVHeap.Get(),mSamplerHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
@@ -322,7 +345,7 @@ void CubeRenderer::Render()
 	mCommandList->RSSetViewports(1, &mViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
 
-	// Clear RenderTarget
+	// 切换 后备RTV 的状态 
 	D3D12_RESOURCE_BARRIER barrier = {};
 	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
@@ -332,10 +355,21 @@ void CubeRenderer::Render()
 	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 	mCommandList->ResourceBarrier(1, &barrier);
 
-	FLOAT clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
-	D3D12_CPU_DESCRIPTOR_HANDLE rtv(mRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-	rtv.ptr += mCurrentBackBufferIndex * mRTVDescriptorSize;
 
+	
+	FLOAT clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
+	D3D12_CPU_DESCRIPTOR_HANDLE rtv;
+	if (mGammaCorrect)
+	{
+		rtv = CD3DX12_CPU_DESCRIPTOR_HANDLE(mSceneColorRTVHeap->GetCPUDescriptorHandleForHeapStart(),
+			mCurrentBackBufferIndex,
+			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
+	}
+	else
+	{
+		rtv = (mRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+		rtv.ptr += mCurrentBackBufferIndex * mRTVDescriptorSize;
+	}
 	//设置渲染目标
 	mCommandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
 
@@ -346,6 +380,39 @@ void CubeRenderer::Render()
 	//Draw Call！！！
 	mCommandList->DrawIndexedInstanced(mCubeMesh->submeshs[0].indices.size(), 1, 0, 0, 0);
 
+	// 如果有后处理
+	if (mGammaCorrect)
+	{
+		// 切换 Scene Color
+		D3D12_RESOURCE_BARRIER barrier = {};
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		barrier.Transition.pResource = mSceneColorBuffer[mCurrentBackBufferIndex].Get();
+		barrier.Transition.StateBefore =  D3D12_RESOURCE_STATE_RENDER_TARGET;
+		barrier.Transition.StateAfter =D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		mCommandList->ResourceBarrier(1, &barrier);
+
+		mCommandList->SetGraphicsRootSignature(mPostprocessSignature.Get());
+		mCommandList->SetPipelineState(mPostprocessPSO.Get());
+		ID3D12DescriptorHeap* ppHeaps[] = { mSceneColorSRVHeap.Get() };
+		mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+		mCommandList->SetGraphicsRootDescriptorTable(0, 
+			CD3DX12_GPU_DESCRIPTOR_HANDLE(mSceneColorSRVHeap->GetGPUDescriptorHandleForHeapStart(),
+				mCurrentBackBufferIndex,
+				mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)));
+		rtv = (mRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+		rtv.ptr += mCurrentBackBufferIndex * mRTVDescriptorSize;
+		mCommandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+
+		mCommandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+		mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		mCommandList->IASetVertexBuffers(0, 1, &mQuadVBView);
+		mCommandList->IASetIndexBuffer(&mQuadIBView);
+		//Draw Call！！！
+		mCommandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+
+	}
 
 
 	// Present
@@ -374,7 +441,7 @@ void CubeRenderer::Render()
 
 void CubeRenderer::Update()
 {
-
+	FPS();
 	if (GetAsyncKeyState('K') & 0x8000)
 	{
 		mSamplerIndex = (++mSamplerIndex) % mSamplerCount;
@@ -382,6 +449,11 @@ void CubeRenderer::Update()
 	}
 	mTimer.tick();
 
+	if (GetAsyncKeyState('P') & 0x8000)
+	{
+		mGammaCorrect = !mGammaCorrect;
+		Sleep(100);
+	}
 
 	// 相机更新
 	static float speed = 20.f;
@@ -412,4 +484,230 @@ void CubeRenderer::Update()
 	XMStoreFloat4x4(&mCBTransGPUPtr->wvp, XMMatrixTranspose(vp));
 	XMStoreFloat4x4(&mCBTransGPUPtr->world, XMMatrixTranspose(world));
 	XMStoreFloat4x4(&mCBTransGPUPtr->invTranspose, XMMatrixTranspose(world));
+}
+
+struct QuadVertex
+{
+	XMFLOAT3 positionL;
+	XMFLOAT2 texcoord;
+};
+
+void CubeRenderer::InitPostprocess()
+{
+	// 创建 InputLayout
+	D3D12_INPUT_ELEMENT_DESC inputDesc[] =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	};
+
+#if defined(_DEBUG)		
+	UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+	UINT compileFlags = 0;
+#endif 
+	WRL::ComPtr<ID3DBlob> vs;
+	WRL::ComPtr<ID3DBlob> ps;
+
+	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\PostprocessVS.hlsl",
+		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "PostprocessVSMain", "vs_5_0", compileFlags, 0, &vs, nullptr));
+	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\PostprocessPS.hlsl",
+		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "GammaCorrectPSMain", "ps_5_0", compileFlags, 0, &ps, nullptr));
+
+	CD3DX12_ROOT_PARAMETER1 rootParameters[1];
+	CD3DX12_DESCRIPTOR_RANGE1 descRange[1];
+	descRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE);
+	rootParameters[0].InitAsDescriptorTable(1, &descRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
+	D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
+	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	samplerDesc.MinLOD = 0.f;
+	samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+	samplerDesc.MipLODBias = 0.0f;
+	samplerDesc.MaxAnisotropy = 1;
+	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
+	rootSignatureDesc.Init_1_1(1, rootParameters,
+		1, &samplerDesc,
+		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+
+	// 创建根签名
+	WRL::ComPtr<ID3DBlob> pSignatureBlob;
+	WRL::ComPtr<ID3DBlob> pErrorBlob;
+	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(
+		&rootSignatureDesc,
+		D3D_ROOT_SIGNATURE_VERSION_1_1,
+		&pSignatureBlob,
+		&pErrorBlob));
+	ThrowIfFailed(mDevice->CreateRootSignature(0,
+		pSignatureBlob->GetBufferPointer(),
+		pSignatureBlob->GetBufferSize(),
+		IID_PPV_ARGS(&mPostprocessSignature)));
+
+	// 创建 PSO
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = { inputDesc, _countof(inputDesc) };
+	psoDesc.pRootSignature = mPostprocessSignature.Get();
+	psoDesc.VS.pShaderBytecode = vs->GetBufferPointer();
+	psoDesc.VS.BytecodeLength = vs->GetBufferSize();
+	psoDesc.PS.pShaderBytecode = ps->GetBufferPointer();
+	psoDesc.PS.BytecodeLength = ps->GetBufferSize();
+	psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+	psoDesc.BlendState.AlphaToCoverageEnable = FALSE;
+	psoDesc.BlendState.IndependentBlendEnable = FALSE;
+	psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	psoDesc.DepthStencilState.DepthEnable = FALSE;
+	psoDesc.DepthStencilState.StencilEnable = FALSE;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.SampleMask = UINT_MAX;
+	psoDesc.SampleDesc.Count = 1;
+	ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPostprocessPSO)));
+
+	
+	std::vector<QuadVertex> vertices(4);
+	std::vector<UINT>		indices;
+
+	vertices[0].positionL = XMFLOAT3(-1.0f, -1.0f, 0.0f);
+	vertices[1].positionL = XMFLOAT3(-1.0f, +1.0f, 0.0f);
+	vertices[2].positionL = XMFLOAT3(+1.0f, +1.0f, 0.0f);
+	vertices[3].positionL = XMFLOAT3(+1.0f, -1.0f, 0.0f);
+	// Store far plane frustum corner indices in normal.x slot.
+
+	vertices[0].texcoord = XMFLOAT2(0.0f, 1.0f);
+	vertices[1].texcoord = XMFLOAT2(0.0f, 0.0f);
+	vertices[2].texcoord = XMFLOAT2(1.0f, 0.0f);
+	vertices[3].texcoord = XMFLOAT2(1.0f, 1.0f);
+	indices = { 0,1,2,0,2,3 };
+
+	ThrowIfFailed(mDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(QuadVertex) * vertices.size()),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mQuadVB)));
+
+	ThrowIfFailed(mDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(UINT) * indices.size()),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&mQuadIB)));
+
+	{
+		void *p;
+		ThrowIfFailed(mQuadVB->Map(0, nullptr, &p));
+		std::memcpy(p, &vertices[0], sizeof(QuadVertex) * vertices.size());
+		mQuadVB->Unmap(0,nullptr);
+	
+		ThrowIfFailed(mQuadIB->Map(0, nullptr, &p));
+		std::memcpy(p, &indices[0], sizeof(UINT) * indices.size());
+		mQuadIB->Unmap(0, nullptr);
+	}
+	mQuadVBView.BufferLocation = mQuadVB->GetGPUVirtualAddress();
+	mQuadVBView.StrideInBytes = sizeof(QuadVertex);
+	mQuadVBView.SizeInBytes = sizeof(QuadVertex) * vertices.size();
+
+	mQuadIBView.BufferLocation = mQuadIB->GetGPUVirtualAddress();
+	mQuadIBView.Format = DXGI_FORMAT_R32_UINT;
+	mQuadIBView.SizeInBytes = sizeof(UINT) * indices.size();
+
+	FLOAT clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
+	D3D12_CLEAR_VALUE d3dClearValue;
+	d3dClearValue.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	std::memcpy(&d3dClearValue.Color, clearColor, sizeof(FLOAT) * 4);
+	for (int i = 0; i < AppConfig::NumFrames; ++i)
+	{
+		ThrowIfFailed(mDevice->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Tex2D(
+				DXGI_FORMAT_R32G32B32A32_FLOAT, 
+				AppConfig::ClientWidth, 
+				AppConfig::ClientHeight,
+				1,1,1,0,
+				D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+			&d3dClearValue,
+			IID_PPV_ARGS(&mSceneColorBuffer[i])));
+	}
+
+	{
+		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+		heapDesc.NumDescriptors = AppConfig::NumFrames;
+		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+		heapDesc.NodeMask = 0;
+		ThrowIfFailed(mDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&mSceneColorRTVHeap)));
+		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		ThrowIfFailed(mDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&mSceneColorSRVHeap)));
+
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {  };
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MipLevels = 1;
+		D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+		rtvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+		rtvDesc.Texture2D.MipSlice = 0;
+		rtvDesc.Texture2D.PlaneSlice = 0;
+		for (int i = 0; i < AppConfig::NumFrames; ++i)
+		{
+			auto srvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mSceneColorSRVHeap->GetCPUDescriptorHandleForHeapStart(), i,
+				mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+			mDevice->CreateShaderResourceView(mSceneColorBuffer[i].Get(), &srvDesc, srvHandle);
+			
+			auto rtvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mSceneColorRTVHeap->GetCPUDescriptorHandleForHeapStart(), i,
+				mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
+			mDevice->CreateRenderTargetView(mSceneColorBuffer[i].Get(), &rtvDesc, rtvHandle);
+		}
+	}
+
+
+
+
+	
+
+}
+
+void CubeRenderer::FPS()
+{
+	// Code computes the average frames per second, and also the 
+	// average time it takes to render one frame.  These stats 
+	// are appended to the window caption bar.
+
+	static int frameCnt = 0;
+	static float timeElapsed = 0.0f;
+
+	frameCnt++;
+
+	// Compute averages over one second period.
+	if ((mTimer.totalTime() - timeElapsed) >= 1.0f)
+	{
+		float fps = (float)frameCnt; // fps = frameCnt / 1
+		float mspf = 1000.0f / fps;
+
+		wstring fpsStr = to_wstring(fps);
+		wstring mspfStr = to_wstring(mspf);
+
+		wstring windowText = 
+			L"    fps: " + fpsStr +
+			L"   mspf: " + mspfStr;
+
+		SetWindowTextW(mHWND, windowText.c_str());
+
+		// Reset for next average.
+		frameCnt = 0;
+		timeElapsed += 1.0f;
+	}
 }

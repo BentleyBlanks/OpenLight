@@ -279,6 +279,7 @@ Renderer::Renderer()
 
 void Renderer::Init(HWND hWnd)
 {
+	mHWND = hWnd;
 	EnableDebugLayer();
 
 	AppConfig::TearingSupported = CheckTearingSupport();
