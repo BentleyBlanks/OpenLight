@@ -5,8 +5,19 @@ ADD_SUBDIRECTORY(${CORE_DIR})
 link_directories(Lib)
 
 FILE(GLOB CORE_SOURCE ${CORE_DIR}/*.*)
-SOURCE_GROUP("core" FILES ${CORE_SOURCE})
+FILE(GLOB RESOURCE_SOURCE ${CORE_DIR}/Resource/*.*)
+FILE(GLOB MATERIAL_SOURCE ${CORE_DIR}/Material/*.*)
 
 
-ADD_EXECUTABLE(OpenLight  ${CORE_SOURCE} main.cpp )
+
+SET(ALL_SOURCE  ${CORE_SOURCE} ${RESOURCE_SOURCE} ${MATERIAL_SOURCE})
+
+foreach(source IN LISTS ALL_SOURCE)
+    get_filename_component(source_path "${source}" PATH)
+    string(REPLACE "${CMAKE_CURRENT_SOURCE_DIR}" "" source_path "${source_path}")
+    string(REPLACE "/" "\\" source_path_msvc "${source_path}")
+    source_group("${source_path_msvc}" FILES "${source}")
+endforeach()
+
+ADD_EXECUTABLE(OpenLight  ${ALL_SOURCE} main.cpp )
 TARGET_LINK_LIBRARIES(OpenLight d3d12.lib dxgi.lib D3DCompiler.lib FreeImage)

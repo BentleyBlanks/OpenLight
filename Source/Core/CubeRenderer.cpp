@@ -572,7 +572,7 @@ void CubeRenderer::InitSkyBox()
 		IID_PPV_ARGS(&mSkyBoxCBTrans)));
 
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = 2;
+	srvHeapDesc.NumDescriptors = 4;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(mDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSkyBoxSRVHeap)));
@@ -597,6 +597,31 @@ void CubeRenderer::InitSkyBox()
 		mDevice->CreateConstantBufferView(&cbvDesc, handle);
 		ThrowIfFailed(mSkyBoxCBTrans->Map(0, nullptr, (void**)&mSkyBoxCBTransGPUPtr));
 	}
+	{
+		CD3DX12_CPU_DESCRIPTOR_HANDLE handle(mSkyBoxSRVHeap->GetCPUDescriptorHandleForHeapStart(),
+			3,
+			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+		cbvDesc.BufferLocation = mSkyBoxCBTrans->GetGPUVirtualAddress();
+		cbvDesc.SizeInBytes = PADCB(sizeof(CBTrans));
+		mDevice->CreateConstantBufferView(&cbvDesc, handle);
+	}
+
+	// 创建 Texture SRV
+	{
+		CD3DX12_CPU_DESCRIPTOR_HANDLE handle(mSkyBoxSRVHeap->GetCPUDescriptorHandleForHeapStart(),
+			2,
+			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MipLevels = 1;
+		mDevice->CreateShaderResourceView(mSkyBoxEnvMap.Get(), &srvDesc, handle);
+	}
+
+
+//	RegisterResource(mSkyBoxEnvMap, SRV);
 
 }
 
@@ -612,12 +637,14 @@ void CubeRenderer::RenderSkyBox()
 	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 	// 设置SRV
-	mCommandList->SetGraphicsRootDescriptorTable(0, mSkyBoxSRVHeap->GetGPUDescriptorHandleForHeapStart());
+	mCommandList->SetGraphicsRootDescriptorTable(0, CD3DX12_GPU_DESCRIPTOR_HANDLE(mSkyBoxSRVHeap->GetGPUDescriptorHandleForHeapStart(),
+		2,
+		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)));
 
 	// 设置 CBV
 	mCommandList->SetGraphicsRootDescriptorTable(1,
 		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSkyBoxSRVHeap->GetGPUDescriptorHandleForHeapStart(),
-			1,
+			3,
 			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)));
 
 	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

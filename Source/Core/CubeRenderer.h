@@ -4,7 +4,7 @@
 #include "ObjMeshLoader.h"
 #include"Timer.h"
 #include<memory>
-
+#include "Resource/GPUResource.h"
 struct CBTrans
 {
 	XMFLOAT4X4 wvp;
@@ -19,6 +19,8 @@ public:
 	virtual ~CubeRenderer();
 	virtual void Init(HWND hWnd) override;
 	virtual void Render() override;
+
+//	RegisterGPUClass(CubeRenderer);
 
 protected:
 	void InitSkyBox();
@@ -69,7 +71,6 @@ protected:
 	WRL::ComPtr<ID3D12Resource1>		mSkyBoxCBTrans = nullptr;
 	CBTrans*							mSkyBoxCBTransGPUPtr = nullptr;
 	
-
 
 	// ÂþÓÎÏà»ú
 	RoamCamera*							mCamera = nullptr;

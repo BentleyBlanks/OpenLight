@@ -54,3 +54,4 @@ Build/OpenLight/.vs/config/applicationhost.config
 Build/OpenLight/Source/FreeImage.dll
 Source/Lib/FreeImage.dll
 timg.jpg
+*.exr
