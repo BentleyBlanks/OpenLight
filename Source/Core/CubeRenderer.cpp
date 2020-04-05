@@ -44,10 +44,6 @@ void CubeRenderer::Init(HWND hWnd)
 	mTimer.reset();
 	Renderer::Init(hWnd);
 
-	mGPUDescriptorRegister = new OpenLight::GPUDescriptorRegister(mDevice);
-
-	mGPUDescriptorRegister->RegisterSRV(RESOURCE_IID(mTexture));
-	mGPUDescriptorRegister->RegisterCBV(RESOURCE_IID(mCBTrans));
 	// ´´½¨ InputLayout
 	D3D12_INPUT_ELEMENT_DESC inputDesc[] =
 	{
