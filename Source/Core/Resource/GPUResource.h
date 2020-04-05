@@ -81,7 +81,7 @@ namespace OpenLight
 
 		
 
-	protected:
+
 		void RegisterDescriptor(const std::string& tableName, GPUDescriptorTable* table, EGPUDescriptorTableType type);
 
 		void AddSRV(const std::string& resourceName,
@@ -102,6 +102,9 @@ namespace OpenLight
 
 		void CommitRegisterDescriptorTable();
 
+		ID3D12DescriptorHeap* CommonHeap()	{ return mCommonHeap.Get(); }
+		ID3D12DescriptorHeap* SamplerHeap() { return mSamplerHeap.Get(); }
+	protected:
 		// SRV CBV UAV
 		WRL::ComPtr<ID3D12DescriptorHeap>	mCommonHeap = nullptr;
 		UINT								mCommonOffset = 0;
@@ -124,40 +127,6 @@ namespace OpenLight
 	
 }
 
-#if 1
-#define RegisterGPUClass(ClassName)								\
-	class ClassName##GPURegister :public OpenLight::GPURegister			\
-	{															\
-	public:														\
-		static const char* strName() { return #ClassName;}		\
-		static ClassName##GPURegister& getInstance()			\
-		{														\
-			static ClassName##GPURegister Instance;				\
-			return Instance;									\
-		}														\
-	private:													\
-	ClassName##GPURegister(){}									\
-	ClassName##GPURegister& operator=(const ClassName##GPURegister) = delete; \
-	};															\
-	ClassName##GPURegister& GetRegisterGPUClassInstance()		\
-	{	\
-		return ClassName##GPURegister::getInstance();			\
-	}
-
-#define RegisterResource(Resource,Type)							\
-	GetRegisterGPUClassInstance().Register##Type(#Resource)		
-
-#define RegisterDescriptorTable(DescriptorTable,Type)			\
-	GetRegisterGPUClassInstance().RegisterDescriptor(#DescriptorTable,&DescriptorTable,Type)
-
-#define DescriptorCommonAdd(Resource,Desc,Type)					\
-	GetRegisterGPUClassInstance().Add##Type(#Resource,Resource,Desc)
-
-#define DescriptorCommonUAVExAdd(Resource,Desc,ResourceCounter) \
-	GetRegisterGPUClassInstance().AddUAV(#Resource,Resource,Desc,ResourceCounter)
-
-#define DescriptorSamplerAdd(Resource,Desc)								\
-	GetRegisterGPUClassInstance().AddSampler(#Resource,Desc)
-
-#define DescriptorCommit	GetRegisterGPUClassInstance().CommitRegisterDescriptorTable()
-#endif
+#define RESOURCE_IID_ARGS(Resource)  #Resource,Resource
+#define RESOURCE_IID(Resource)	#Resource
+#define RESOURCE_IID_PARGS(Resource) #Resource,&Resource

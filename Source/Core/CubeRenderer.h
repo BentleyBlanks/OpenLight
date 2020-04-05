@@ -20,7 +20,6 @@ public:
 	virtual void Init(HWND hWnd) override;
 	virtual void Render() override;
 
-//	RegisterGPUClass(CubeRenderer);
 
 protected:
 	void InitSkyBox();
@@ -31,8 +30,8 @@ protected:
 	WRL::ComPtr<ID3D12Resource1>		mTexture = nullptr;
 	WRL::ComPtr<ID3D12Resource1>		mCBTrans = nullptr;
 	CBTrans*							mCBTransGPUPtr = nullptr;
-	WRL::ComPtr<ID3D12DescriptorHeap>	mSRVCBVHeap = nullptr;
-	WRL::ComPtr<ID3D12DescriptorHeap>	mSamplerHeap = nullptr;
+//	WRL::ComPtr<ID3D12DescriptorHeap>	mSRVCBVHeap = nullptr;
+//	WRL::ComPtr<ID3D12DescriptorHeap>	mSamplerHeap = nullptr;
 	WRL::ComPtr<ID3D12PipelineState>	mPSO = nullptr;
 	WRL::ComPtr<ID3D12PipelineState>	mPSORGBA32 = nullptr;
 	WRL::ComPtr<ID3D12RootSignature>	mRootSignature = nullptr;
@@ -47,7 +46,9 @@ protected:
 
 
 	WRL::ComPtr<ID3D12DescriptorHeap>	mSceneColorRTVHeap		= nullptr;
-	WRL::ComPtr<ID3D12DescriptorHeap>	mSceneColorSRVHeap		= nullptr;
+
+//	WRL::ComPtr<ID3D12DescriptorHeap>	mSceneColorSRVHeap		= nullptr;
+
 	WRL::ComPtr<ID3D12RootSignature>	mPostprocessSignature	= nullptr;
 	WRL::ComPtr<ID3D12PipelineState>	mPostprocessPSO			= nullptr;
 	WRL::ComPtr<ID3D12Resource1>		mQuadVB					= nullptr;
@@ -67,7 +68,9 @@ protected:
 	WRL::ComPtr<ID3D12RootSignature>	mSkyBoxSignature = nullptr;
 	WRL::ComPtr<ID3D12PipelineState>	mSkyBoxPSO = nullptr;
 	WRL::ComPtr<ID3D12PipelineState>	mSkyBoxPSORGB32 = nullptr;
-	WRL::ComPtr<ID3D12DescriptorHeap>	mSkyBoxSRVHeap = nullptr;
+
+//	WRL::ComPtr<ID3D12DescriptorHeap>	mSkyBoxSRVHeap = nullptr;
+
 	WRL::ComPtr<ID3D12Resource1>		mSkyBoxCBTrans = nullptr;
 	CBTrans*							mSkyBoxCBTransGPUPtr = nullptr;
 	
@@ -83,5 +86,7 @@ protected:
 
 	Timer								mTimer;
 	bool								mGammaCorrect = false;
+
+	OpenLight::GPUDescriptorRegister*	mGPUDescriptorRegister = nullptr;
 };
 
