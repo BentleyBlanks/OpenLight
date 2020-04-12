@@ -20,7 +20,6 @@ public:
 	virtual void Init(HWND hWnd) override;
 	virtual void Render() override;
 
-//	RegisterGPUClass(CubeRenderer);
 
 protected:
 	void InitSkyBox();
