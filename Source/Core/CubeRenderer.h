@@ -11,9 +11,11 @@ struct CBTrans
 	XMFLOAT4X4 world;
 	XMFLOAT4X4 invTranspose;
 };
-
+using namespace OpenLight;
+using WrapIndex = GPUDescriptorHeapWrap::GPUDescriptorHeapWrapIndex;
 class CubeRenderer :public Renderer
 {
+	
 public:
 	CubeRenderer();
 	virtual ~CubeRenderer();
@@ -30,8 +32,9 @@ protected:
 	WRL::ComPtr<ID3D12Resource1>		mTexture = nullptr;
 	WRL::ComPtr<ID3D12Resource1>		mCBTrans = nullptr;
 	CBTrans*							mCBTransGPUPtr = nullptr;
-	WRL::ComPtr<ID3D12DescriptorHeap>	mSRVCBVHeap = nullptr;
-	WRL::ComPtr<ID3D12DescriptorHeap>	mSamplerHeap = nullptr;
+	WrapIndex							mSRVIndex;
+	WrapIndex							mSamplerIndices[4];
+	WrapIndex							mCBVIndex;
 	WRL::ComPtr<ID3D12PipelineState>	mPSO = nullptr;
 	WRL::ComPtr<ID3D12PipelineState>	mPSORGBA32 = nullptr;
 	WRL::ComPtr<ID3D12RootSignature>	mRootSignature = nullptr;
@@ -44,9 +47,9 @@ protected:
 	int									mSamplerCount = 3;
 	int									mSamplerIndex = 0;
 
-
-	WRL::ComPtr<ID3D12DescriptorHeap>	mSceneColorRTVHeap		= nullptr;
-	WRL::ComPtr<ID3D12DescriptorHeap>	mSceneColorSRVHeap		= nullptr;
+	
+	WrapIndex							mPostprocessSRVIndex[3];
+	WrapIndex							mPostprocessRTVIndex[3];
 	WRL::ComPtr<ID3D12RootSignature>	mPostprocessSignature	= nullptr;
 	WRL::ComPtr<ID3D12PipelineState>	mPostprocessPSO			= nullptr;
 	WRL::ComPtr<ID3D12Resource1>		mQuadVB					= nullptr;
@@ -60,13 +63,13 @@ protected:
 	WRL::ComPtr<ID3D12Resource1>		mSkyBoxIB				= nullptr;
 	D3D12_VERTEX_BUFFER_VIEW			mSkyBoxVBView;
 	D3D12_INDEX_BUFFER_VIEW				mSkyBoxIBView;
-	UINT								mSkyBoxSRVIndex;
+	WrapIndex							mSkyBoxSRVIndex;
+	WrapIndex							mSkyBoxCBVIndex;
 	std::shared_ptr<ObjMesh>			mSkyBoxMesh = nullptr;
 	WRL::ComPtr<ID3D12Resource1>		mSkyBoxEnvMap = nullptr;
 	WRL::ComPtr<ID3D12RootSignature>	mSkyBoxSignature = nullptr;
 	WRL::ComPtr<ID3D12PipelineState>	mSkyBoxPSO = nullptr;
 	WRL::ComPtr<ID3D12PipelineState>	mSkyBoxPSORGB32 = nullptr;
-	WRL::ComPtr<ID3D12DescriptorHeap>	mSkyBoxSRVHeap = nullptr;
 	WRL::ComPtr<ID3D12Resource1>		mSkyBoxCBTrans = nullptr;
 	CBTrans*							mSkyBoxCBTransGPUPtr = nullptr;
 	
@@ -82,5 +85,8 @@ protected:
 
 	Timer								mTimer;
 	bool								mGammaCorrect = false;
+
+	OpenLight::GPUDescriptorHeapWrap*	mDescriptorHeap;
+	
 };
 

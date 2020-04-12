@@ -43,7 +43,7 @@ void CubeRenderer::Init(HWND hWnd)
 {
 	mTimer.reset();
 	Renderer::Init(hWnd);
-
+	mDescriptorHeap = new GPUDescriptorHeapWrap(mDevice);
 	// 创建 InputLayout
 	D3D12_INPUT_ELEMENT_DESC inputDesc[] =
 	{
@@ -201,22 +201,6 @@ void CubeRenderer::Init(HWND hWnd)
 	mScissorRect = { 0, 0
 		, static_cast<LONG>(AppConfig::ClientWidth), static_cast<LONG>(AppConfig::ClientHeight) };
 
-	// 创建 SRV CBV Heap
-	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = 2;
-	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	ThrowIfFailed(mDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSRVCBVHeap)));
-
-	// 创建 Sampler Heap
-	D3D12_DESCRIPTOR_HEAP_DESC samplerHeapDesc = {};
-	samplerHeapDesc.NumDescriptors = mSamplerCount;
-	samplerHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-	samplerHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	ThrowIfFailed(mDevice->CreateDescriptorHeap(&samplerHeapDesc, IID_PPV_ARGS(&mSamplerHeap)));
-
-
-
 	// 创建 Texture Resource
 	auto commandAllocator = mCommandAllocator[0];
 	ThrowIfFailed(commandAllocator->Reset());
@@ -234,25 +218,23 @@ void CubeRenderer::Init(HWND hWnd)
 		srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srvDesc.Texture2D.MipLevels = 1;
-		mDevice->CreateShaderResourceView(mTexture.Get(), &srvDesc, mSRVCBVHeap->GetCPUDescriptorHandleForHeapStart());
+		mSRVIndex = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		mDescriptorHeap->AddSRV(&mSRVIndex, mTexture.Get(), srvDesc);
 	}
 
 	// 创建 CBV
 	{
 		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 		cbvDesc.BufferLocation = mCBTrans->GetGPUVirtualAddress();
-		cbvDesc.SizeInBytes = PAD(sizeof(CBTrans),256);
-		CD3DX12_CPU_DESCRIPTOR_HANDLE handle(mSRVCBVHeap->GetCPUDescriptorHandleForHeapStart(),
-			1,
-			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+		cbvDesc.SizeInBytes = PAD(sizeof(CBTrans), 256);
 
-		mDevice->CreateConstantBufferView(&cbvDesc, handle);
+		mCBVIndex = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		mDescriptorHeap->AddCBV(&mCBVIndex, mCBTrans.Get(), cbvDesc);
 	}
 
 
 	// 创建 Sampler
-	auto samplerDescriptorOffset = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-	CD3DX12_CPU_DESCRIPTOR_HANDLE samplerHandle(mSamplerHeap->GetCPUDescriptorHandleForHeapStart());
+	
 
 	D3D12_SAMPLER_DESC samplerDesc = {  };
 	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -270,21 +252,22 @@ void CubeRenderer::Init(HWND hWnd)
 	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
 	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
 	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-	mDevice->CreateSampler(&samplerDesc, samplerHandle);
-
+	mSamplerIndices[0] = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+	mDescriptorHeap->AddSampler(&mSamplerIndices[0], samplerDesc);
 	// Sampler 2
-	samplerHandle.Offset(samplerDescriptorOffset);
 	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	mDevice->CreateSampler(&samplerDesc, samplerHandle);
+	mSamplerIndices[1] = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+	mDescriptorHeap->AddSampler(&mSamplerIndices[1], samplerDesc);
 
 	// Sampler 3
-	samplerHandle.Offset(samplerDescriptorOffset);
+	
 	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_MIRROR;
 	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_MIRROR;
 	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_MIRROR;
-	mDevice->CreateSampler(&samplerDesc, samplerHandle);
+	mSamplerIndices[2] = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+	mDescriptorHeap->AddSampler(&mSamplerIndices[2], samplerDesc);
 
 
 	InitPostprocess();
@@ -335,9 +318,7 @@ void CubeRenderer::Render()
 	D3D12_CPU_DESCRIPTOR_HANDLE rtv;
 	if (mGammaCorrect)
 	{
-		rtv = CD3DX12_CPU_DESCRIPTOR_HANDLE(mSceneColorRTVHeap->GetCPUDescriptorHandleForHeapStart(),
-			mCurrentBackBufferIndex,
-			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
+		rtv = mPostprocessRTVIndex[mCurrentBackBufferIndex].cpuHandle;
 	}
 	else
 	{
@@ -357,23 +338,19 @@ void CubeRenderer::Render()
 		mCommandList->SetPipelineState(mPSORGBA32.Get());
 	else
 		mCommandList->SetPipelineState(mPSO.Get());
-	ID3D12DescriptorHeap* ppHeaps[] = { mSRVCBVHeap.Get(),mSamplerHeap.Get() };
+	ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV),
+		mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) };
 	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 	// 设置SRV
-	mCommandList->SetGraphicsRootDescriptorTable(0, mSRVCBVHeap->GetGPUDescriptorHandleForHeapStart());
+	mCommandList->SetGraphicsRootDescriptorTable(0, mDescriptorHeap->GPUHandle(mSRVIndex));
 
 	// 设置 Sampler
-	CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHandle(mSamplerHeap->GetGPUDescriptorHandleForHeapStart(),
-		mSamplerIndex,
-		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER));
-	mCommandList->SetGraphicsRootDescriptorTable(1, samplerHandle);
+	
+	mCommandList->SetGraphicsRootDescriptorTable(1, mDescriptorHeap->GPUHandle(mSamplerIndices[mSamplerIndex]));
 
 	// 设置 CBV
-	mCommandList->SetGraphicsRootDescriptorTable(2,
-		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSRVCBVHeap->GetGPUDescriptorHandleForHeapStart(),
-			1,
-			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)));
+	mCommandList->SetGraphicsRootDescriptorTable(2, mDescriptorHeap->GPUHandle(mCBVIndex));
 
 	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	mCommandList->IASetVertexBuffers(0, 1, &mCubeMeshVBView);
@@ -396,12 +373,9 @@ void CubeRenderer::Render()
 
 		mCommandList->SetGraphicsRootSignature(mPostprocessSignature.Get());
 		mCommandList->SetPipelineState(mPostprocessPSO.Get());
-		ID3D12DescriptorHeap* ppHeaps[] = { mSceneColorSRVHeap.Get() };
+		ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) };
 		mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-		mCommandList->SetGraphicsRootDescriptorTable(0, 
-			CD3DX12_GPU_DESCRIPTOR_HANDLE(mSceneColorSRVHeap->GetGPUDescriptorHandleForHeapStart(),
-				mCurrentBackBufferIndex,
-				mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)));
+		mCommandList->SetGraphicsRootDescriptorTable(0, mDescriptorHeap->GPUHandle(mPostprocessSRVIndex[mCurrentBackBufferIndex]));
 		rtv = (mRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 		rtv.ptr += mCurrentBackBufferIndex * mRTVDescriptorSize;
 		mCommandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
@@ -571,11 +545,7 @@ void CubeRenderer::InitSkyBox()
 		nullptr,
 		IID_PPV_ARGS(&mSkyBoxCBTrans)));
 
-	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = 4;
-	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	ThrowIfFailed(mDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSkyBoxSRVHeap)));
+
 
 	// 创建 Texture SRV
 	{
@@ -584,42 +554,19 @@ void CubeRenderer::InitSkyBox()
 		srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srvDesc.Texture2D.MipLevels = 1;
-		mDevice->CreateShaderResourceView(mSkyBoxEnvMap.Get(), &srvDesc, mSkyBoxSRVHeap->GetCPUDescriptorHandleForHeapStart());
+		mSkyBoxSRVIndex = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		mDescriptorHeap->AddSRV(&mSkyBoxSRVIndex, mSkyBoxEnvMap.Get(), srvDesc);
 	}
 
 	{
-		CD3DX12_CPU_DESCRIPTOR_HANDLE handle(mSkyBoxSRVHeap->GetCPUDescriptorHandleForHeapStart(),
-			1,
-			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+		
 		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 		cbvDesc.BufferLocation = mSkyBoxCBTrans->GetGPUVirtualAddress();
 		cbvDesc.SizeInBytes = PADCB(sizeof(CBTrans));
-		mDevice->CreateConstantBufferView(&cbvDesc, handle);
+		mSkyBoxCBVIndex = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		mDescriptorHeap->AddCBV(&mSkyBoxCBVIndex, mSkyBoxCBTrans.Get(), cbvDesc);
 		ThrowIfFailed(mSkyBoxCBTrans->Map(0, nullptr, (void**)&mSkyBoxCBTransGPUPtr));
 	}
-	{
-		CD3DX12_CPU_DESCRIPTOR_HANDLE handle(mSkyBoxSRVHeap->GetCPUDescriptorHandleForHeapStart(),
-			3,
-			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-		cbvDesc.BufferLocation = mSkyBoxCBTrans->GetGPUVirtualAddress();
-		cbvDesc.SizeInBytes = PADCB(sizeof(CBTrans));
-		mDevice->CreateConstantBufferView(&cbvDesc, handle);
-	}
-
-	// 创建 Texture SRV
-	{
-		CD3DX12_CPU_DESCRIPTOR_HANDLE handle(mSkyBoxSRVHeap->GetCPUDescriptorHandleForHeapStart(),
-			2,
-			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srvDesc.Texture2D.MipLevels = 1;
-		mDevice->CreateShaderResourceView(mSkyBoxEnvMap.Get(), &srvDesc, handle);
-	}
-
 
 //	RegisterResource(mSkyBoxEnvMap, SRV);
 
@@ -633,19 +580,14 @@ void CubeRenderer::RenderSkyBox()
 	else
 		mCommandList->SetPipelineState(mSkyBoxPSO.Get());
 
-	ID3D12DescriptorHeap* ppHeaps[] = { mSkyBoxSRVHeap.Get()};
+	ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)};
 	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 	// 设置SRV
-	mCommandList->SetGraphicsRootDescriptorTable(0, CD3DX12_GPU_DESCRIPTOR_HANDLE(mSkyBoxSRVHeap->GetGPUDescriptorHandleForHeapStart(),
-		2,
-		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)));
+	mCommandList->SetGraphicsRootDescriptorTable(0, mDescriptorHeap->GPUHandle(mSkyBoxSRVIndex));
 
 	// 设置 CBV
-	mCommandList->SetGraphicsRootDescriptorTable(1,
-		CD3DX12_GPU_DESCRIPTOR_HANDLE(mSkyBoxSRVHeap->GetGPUDescriptorHandleForHeapStart(),
-			3,
-			mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)));
+	mCommandList->SetGraphicsRootDescriptorTable(1, mDescriptorHeap->GPUHandle(mSkyBoxCBVIndex));
 
 	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	mCommandList->IASetVertexBuffers(0, 1, &mSkyBoxVBView);
@@ -861,16 +803,7 @@ void CubeRenderer::InitPostprocess()
 	}
 
 	{
-		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-		heapDesc.NumDescriptors = AppConfig::NumFrames;
-		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-		heapDesc.NodeMask = 0;
-		ThrowIfFailed(mDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&mSceneColorRTVHeap)));
-		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-		ThrowIfFailed(mDevice->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&mSceneColorSRVHeap)));
-
+		
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {  };
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -884,13 +817,12 @@ void CubeRenderer::InitPostprocess()
 		rtvDesc.Texture2D.PlaneSlice = 0;
 		for (int i = 0; i < AppConfig::NumFrames; ++i)
 		{
-			auto srvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mSceneColorSRVHeap->GetCPUDescriptorHandleForHeapStart(), i,
-				mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-			mDevice->CreateShaderResourceView(mSceneColorBuffer[i].Get(), &srvDesc, srvHandle);
 			
-			auto rtvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mSceneColorRTVHeap->GetCPUDescriptorHandleForHeapStart(), i,
-				mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
-			mDevice->CreateRenderTargetView(mSceneColorBuffer[i].Get(), &rtvDesc, rtvHandle);
+			mPostprocessSRVIndex[i] = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+			mDescriptorHeap->AddSRV(&mPostprocessSRVIndex[i], mSceneColorBuffer[i].Get(), srvDesc);
+			
+			mPostprocessRTVIndex[i] = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+			mDescriptorHeap->AddRTV(&mPostprocessRTVIndex[i], mSceneColorBuffer[i].Get(), rtvDesc);
 		}
 	}
 

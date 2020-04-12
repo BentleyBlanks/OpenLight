@@ -18,11 +18,13 @@ OpenLight::GPUDescriptorHeapWrap::GPUDescriptorHeapWrap(WRL::ComPtr<ID3D12Device
 	desc.NodeMask = 0;
 	ThrowIfFailed(mDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&mHeaps[D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV])));
 	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	ThrowIfFailed(mDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&mHeaps[D3D12_DESCRIPTOR_HEAP_TYPE_RTV])));
 	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	ThrowIfFailed(mDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&mHeaps[D3D12_DESCRIPTOR_HEAP_TYPE_DSV])));
 	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
 	desc.NumDescriptors = DEFAULT_SAMPLER_SIZE;
+	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(mDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&mHeaps[D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER])));
 
 }
@@ -38,9 +40,10 @@ OpenLight::GPUDescriptorHeapWrap::GPUDescriptorHeapWrapIndex OpenLight::GPUDescr
 	GPUDescriptorHeapWrapIndex index;
 	index.offset = mOffsets[type];
 	index.size = size;
-	index.index = index.offset;
+	index.index = 0;
 	index.type = type;
-	index.handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mHeaps[type]->GetCPUDescriptorHandleForHeapStart(),
+
+	index.cpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mHeaps[type]->GetCPUDescriptorHandleForHeapStart(),
 		mOffsets[type],
 		mDevice->GetDescriptorHandleIncrementSize(type));
 	mOffsets[type] += size;
@@ -56,7 +59,7 @@ void OpenLight::GPUDescriptorHeapWrap::AddCBV(GPUDescriptorHeapWrapIndex * index
 	assert(index->type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	assert(index->index < index->size);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-		index->handle,
+		index->cpuHandle,
 		index->index,
 		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 	cbvDesc.BufferLocation = resource->GetGPUVirtualAddress();
@@ -69,12 +72,12 @@ void OpenLight::GPUDescriptorHeapWrap::AddSRV(GPUDescriptorHeapWrapIndex * index
 	assert(index->type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	assert(index->index < index->size);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-		index->handle,
+		index->cpuHandle,
 		index->index,
 		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 	
 	mDevice->CreateShaderResourceView(resource,&srvDesc,handle);
-	index->index;
+	index->index++;
 }
 
 void OpenLight::GPUDescriptorHeapWrap::AddUAV(GPUDescriptorHeapWrapIndex * index, ID3D12Resource * resource, D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc, ID3D12Resource* counter)
@@ -82,7 +85,7 @@ void OpenLight::GPUDescriptorHeapWrap::AddUAV(GPUDescriptorHeapWrapIndex * index
 	assert(index->type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	assert(index->index < index->size);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-		index->handle,
+		index->cpuHandle,
 		index->index,
 		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 	
@@ -95,7 +98,7 @@ void OpenLight::GPUDescriptorHeapWrap::AddRTV(GPUDescriptorHeapWrapIndex * index
 	assert(index->type == D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	assert(index->index < index->size);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-		index->handle,
+		index->cpuHandle,
 		index->index,
 		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
 
@@ -108,7 +111,7 @@ void OpenLight::GPUDescriptorHeapWrap::AddDSV(GPUDescriptorHeapWrapIndex * index
 	assert(index->type == D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 	assert(index->index < index->size);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-		index->handle,
+		index->cpuHandle,
 		index->index,
 		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
 
@@ -121,9 +124,18 @@ void OpenLight::GPUDescriptorHeapWrap::AddSampler(GPUDescriptorHeapWrapIndex* in
 	assert(index->type == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 	assert(index->index < index->size);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-		index->handle,
+		index->cpuHandle,
 		index->index,
 		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER));
 	mDevice->CreateSampler(&samplerDesc, handle);
 	index->index++;
+}
+
+D3D12_GPU_DESCRIPTOR_HANDLE OpenLight::GPUDescriptorHeapWrap::GPUHandle(const GPUDescriptorHeapWrapIndex& index)
+{
+	CD3DX12_GPU_DESCRIPTOR_HANDLE handle(mHeaps[index.type]->GetGPUDescriptorHandleForHeapStart(),
+		index.offset,
+		mDevice->GetDescriptorHandleIncrementSize(index.type));
+
+	return handle;
 }

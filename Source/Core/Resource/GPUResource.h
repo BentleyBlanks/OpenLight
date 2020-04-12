@@ -19,7 +19,7 @@ namespace OpenLight
 			UINT offset;
 			UINT size;
 			UINT index;
-			D3D12_CPU_DESCRIPTOR_HANDLE	handle;
+			D3D12_CPU_DESCRIPTOR_HANDLE	cpuHandle;
 			D3D12_DESCRIPTOR_HEAP_TYPE  type;
 		};
 
@@ -34,6 +34,13 @@ namespace OpenLight
 		void AddRTV(GPUDescriptorHeapWrapIndex* index, ID3D12Resource* resource, D3D12_RENDER_TARGET_VIEW_DESC rtvDesc);
 		void AddDSV(GPUDescriptorHeapWrapIndex* index, ID3D12Resource* resource, D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc);
 		void AddSampler(GPUDescriptorHeapWrapIndex* index, D3D12_SAMPLER_DESC samplerDesc);
+	
+		D3D12_GPU_DESCRIPTOR_HANDLE GPUHandle(const GPUDescriptorHeapWrapIndex& index);
+
+		ID3D12DescriptorHeap* GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE type) const
+		{
+			return mHeaps[type].Get();
+		}
 	protected:
 
 		
