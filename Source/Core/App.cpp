@@ -73,7 +73,7 @@ void App::Init(HINSTANCE hInstance)
 
 	{
 		GameObject* o = new GameObject();
-		Shader* shader = new Shader(renderer->GetDevice() , "../../Shader/HelloWorld.hlsl" , "vsmain" , "psmain");
+		Shader* shader = new Shader(renderer->GetDevice() , "../Shader/HelloWorld.hlsl" , "vsmain" , "psmain");
 		o->SetShader(shader);
 		o->Load(renderer->GetDevice() , renderer->GetCommandQueue(D3D12_COMMAND_LIST_TYPE_COPY));
 		scene->AddObject(o);

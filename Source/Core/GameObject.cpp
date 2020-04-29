@@ -2,7 +2,7 @@
 #include <DirectXMath.h>
 #include "Utility.h"
 #include "App.h"
-#include <d3dx12.h>
+#include "d3dx12.h"
 #include "CommandQueue.h"
 
 struct VertexPosColor
