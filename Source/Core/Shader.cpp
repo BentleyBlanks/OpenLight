@@ -5,7 +5,7 @@
 #include <iostream>
 #include <DirectXMath.h>
 #include "Utility.h"
-#include <d3dx12.h>
+#include "d3dx12.h"
 
 void LoadFile(const char* path, std::string& str)
 {
