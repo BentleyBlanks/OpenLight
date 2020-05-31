@@ -116,7 +116,7 @@ private:
 	// the descriptors were copied.
 	uint32_t mStaleDescriptorTableBitMask;
 
-	using DescriptorHeapPool = std::queue<ID3D12DescriptorHeap>;
+	using DescriptorHeapPool = std::queue<ID3D12DescriptorHeap*>;
 	DescriptorHeapPool mDescriptorHeapPool;
 	DescriptorHeapPool mAvailableDescriptorHeaps;
 
