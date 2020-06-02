@@ -2,7 +2,8 @@
 
 #include <d3d12.h>
 #include <wrl.h>
-#include <string.h>
+#include <string>
+#include <memory>
 
 class Resource
 {
@@ -53,6 +54,6 @@ public:
 
 protected:
 	ID3D12Resource* m_d3d12Resource;
-	std::unique_ptr<D3D12_CLEAR_VALUE> m_d3dClearValue;
+	std::unique_ptr<D3D12_CLEAR_VALUE> m_d3d12ClearValue;
 	std::wstring m_ResourceName;
 };
