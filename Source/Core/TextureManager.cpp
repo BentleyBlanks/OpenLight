@@ -219,4 +219,117 @@ WRL::ComPtr<ID3D12Resource1> TextureMgr::LoadTexture2DFromFile(const std::string
 	return texture;
 }
 
+ID3D12Resource * TextureMgr::LoadTexture2DFromFile2(const std::string & fileName, ID3D12Device5 * device, ID3D12GraphicsCommandList * commandList, ID3D12CommandQueue * commandQueue, TextureInfo * pTextureInfo)
+{
+	std::vector<XMFLOAT4> rawData;
+	int width;
+	int height;
+
+	loadTextureFromFile(fileName, &rawData, &width, &height);
+
+	ID3D12Resource* texture;
+	WRL::ComPtr<ID3D12Resource> textureUpload;
+
+	// 在默认堆上创建资源
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, width, height, 1, 1),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&texture)));
+
+	// 获取实际的大小
+	UINT64 uploadBufferSize;
+	device->GetCopyableFootprints(
+		&texture->GetDesc(),
+		0, 1,
+		0, nullptr, nullptr, nullptr, &uploadBufferSize);
+#if 1
+	// 创建上传堆上的资源
+	auto upDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
+	ThrowIfFailed(device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&upDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&textureUpload)));
+
+	// 复制纹理数据至上传堆
+	// 获取上传堆目标的格式和信息
+	auto uploadDesc = textureUpload->GetDesc();
+	D3D12_PLACED_SUBRESOURCE_FOOTPRINT texLayout = {};
+	UINT64 requiredSize = 0;
+	UINT64 textureRowSize = 0;
+	UINT textureRowNum = 0;
+
+	device->GetCopyableFootprints(
+		&texture->GetDesc(),
+		0,
+		1,
+		0,
+		&texLayout,
+		&textureRowNum,
+		&textureRowSize,
+		&requiredSize);
+
+	BYTE* pData = nullptr;
+	ThrowIfFailed(textureUpload->Map(0, nullptr, reinterpret_cast<void**>(&pData)));
+
+	// 获取上传堆的开始指针位置
+	BYTE* pDest = reinterpret_cast<BYTE*>(pData) + texLayout.Offset;
+	BYTE* pSrc = reinterpret_cast<BYTE*>(&rawData[0]);
+	SIZE_T srcRowPitch = sizeof(XMFLOAT4) * width;
+	for (UINT y = 0; y < textureRowNum; ++y)
+	{
+		memcpy(pDest + static_cast<SIZE_T>(texLayout.Footprint.RowPitch) * y,
+			pSrc + srcRowPitch * y,
+			srcRowPitch);
+	}
+	textureUpload->Unmap(0, nullptr);
+
+
+	// 向命令队列传递复制命令
+	CD3DX12_TEXTURE_COPY_LOCATION dest(texture, 0);
+	CD3DX12_TEXTURE_COPY_LOCATION src(textureUpload.Get(), texLayout);
+	commandList->CopyTextureRegion(
+		&dest, 0, 0, 0,
+		&src, nullptr);
+
+	// 设置资源屏障
+	D3D12_RESOURCE_BARRIER resBar = {};
+	resBar.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	resBar.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	resBar.Transition.pResource = texture;
+	resBar.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+	resBar.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	resBar.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+	commandList->ResourceBarrier(1, &resBar);
+
+	ThrowIfFailed(commandList->Close());
+	// 执行命令列表
+	ID3D12CommandList* ppCommandLists[] = { commandList };
+	commandQueue->ExecuteCommandLists(1, ppCommandLists);
+
+	// 创建 Fence 进行同步
+	WRL::ComPtr<ID3D12Fence> fence;
+	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)));
+
+	// 同步操作
+	ThrowIfFailed(commandQueue->Signal(fence.Get(), 1));
+	auto fenceEvent = CreateEvent(nullptr, false, false, nullptr);
+
+	if (fence->GetCompletedValue() < 1)
+	{
+		fence->SetEventOnCompletion(1, fenceEvent);
+		WaitForSingleObject(fenceEvent, INFINITE);
+	}
+#endif
+
+	// 返回创建好的 默认堆纹理
+	return texture;
+}
+
 

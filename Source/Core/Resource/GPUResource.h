@@ -2,6 +2,7 @@
 
 #include "Utility.h"
 #include<d3d12.h>
+#include"d3dx12.h"
 #include<thread>
 #include<map>
 #include<array>
@@ -16,16 +17,27 @@ namespace OpenLight
 	public:
 		struct GPUDescriptorHeapWrapIndex
 		{
+			GPUDescriptorHeapWrapIndex()
+			{
+				offset = 0;
+				size   = 0;
+				index  = 0;
+				heap   = nullptr;
+			}
+			friend GPUDescriptorHeapWrap;
 			UINT offset;
 			UINT size;
 			UINT index;
 			D3D12_CPU_DESCRIPTOR_HANDLE	cpuHandle;
 			D3D12_DESCRIPTOR_HEAP_TYPE  type;
+
+			bool valid() const { return heap; }
+		private:
+			GPUDescriptorHeapWrap* heap = nullptr;
 		};
 
 
-		GPUDescriptorHeapWrap(WRL::ComPtr<ID3D12Device> device);
-
+		GPUDescriptorHeapWrap(ID3D12Device5* device);
 		GPUDescriptorHeapWrapIndex Allocate(UINT size,D3D12_DESCRIPTOR_HEAP_TYPE type);
 
 		void AddCBV(GPUDescriptorHeapWrapIndex* index, ID3D12Resource* resource, D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc);
@@ -45,12 +57,50 @@ namespace OpenLight
 
 		
 		std::array<WRL::ComPtr<ID3D12DescriptorHeap>, D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES> mHeaps;
-		std::array<UINT, D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES> mOffsets;
-		WRL::ComPtr<ID3D12Device>			mDevice;
+		std::array<UINT, D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES>								mOffsets;
+		WRL::ComPtr<ID3D12Device>															mDevice;
 	};
+	using DescriptorIndex = GPUDescriptorHeapWrap::GPUDescriptorHeapWrapIndex;
+
+	class GPUUploadHeapWrap
+	{
+	public:
+		// 默认大小为 128 MB
+		GPUUploadHeapWrap(ID3D12Device* device,UINT capacity = (1<<27));
+
+		~GPUUploadHeapWrap()
+		{
+			mUploadHeap->Release();
+		}
 
 
+		bool createResource(ID3D12Device5*device, UINT sizeInBytes,D3D12_RESOURCE_DESC& desc, REFIID riid,_COM_Outptr_opt_  void **ppvResource);
+		bool createResource(ID3D12Device5*device, UINT sizeInBytes, D3D12_RESOURCE_DESC& desc, ID3D12Resource* & resource);
+		ID3D12Resource* createResource(ID3D12Device5*device, UINT sizeInBytes, D3D12_RESOURCE_DESC& desc)
+		{
+			if (mUploadOffsetInBytes + sizeInBytes >= mUploadCapacityInBytes)
+			{
 
+				return nullptr;
+			}
+
+			ID3D12Resource* resource;
+			ThrowIfFailed(device->CreatePlacedResource(
+				mUploadHeap,
+				mUploadOffsetInBytes,
+				&desc,
+				D3D12_RESOURCE_STATE_GENERIC_READ,
+				nullptr,
+				IID_PPV_ARGS(&resource)));
+
+			mUploadOffsetInBytes = PAD(mUploadOffsetInBytes + sizeInBytes, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
+			return resource;
+		}
+	protected:
+		ID3D12Heap1*					mUploadHeap;
+		UINT							mUploadCapacityInBytes;
+		UINT							mUploadOffsetInBytes;
+	};
 	
 }
 

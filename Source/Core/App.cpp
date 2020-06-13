@@ -7,20 +7,22 @@
 
 #include "AppConfig.h"
 #include "Renderer.h"
-#include "TextureCubeRenderer.h"
-#include "CubeRenderer.h"
+#include "VegetationDemo/C1/C1Demo.h"
 #include "Window.h"
 #include "App.h"
+
 #include<windowsx.h>
-extern int  gMouseX;
-extern int  gMouseY;
-extern int  gLastMouseX;
-extern int  gLastMouseY;
-extern bool gMouseDown;
-extern bool gMouseMove;
-extern HWND  gHwnd;
+
+
+#include "GUI/imgui.h"
+#include "GUI/imgui_impl_win32.h"
+#include "GUI/imgui_impl_dx12.h"
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lParam)
 {
+	if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
+		return true;
+#if 1
 	switch (message)
 	{
 	case WM_SYSKEYDOWN:
@@ -46,15 +48,11 @@ LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lPara
 			}
 			break;
 		case WM_LBUTTONDOWN:
-			gLastMouseX = GET_X_LPARAM(lParam);
-			gLastMouseY = GET_Y_LPARAM(lParam);
+		
 			return true;
 		case WM_MOUSEMOVE:
 			//		std::cout << io.MousePos.x << "  " << io.MousePos.y << std::endl;
-			if (((wParam & MK_LBUTTON) != 0))
-				gMouseMove = true;
-			gMouseX = GET_X_LPARAM(lParam);
-			gMouseY = GET_Y_LPARAM(lParam);
+
 			return true;
 		}
 		break;
@@ -63,12 +61,12 @@ LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lPara
 	case WM_SIZE:
 	{
 		RECT clientRect = {};
-		::GetClientRect(hWnd , &clientRect);
+		::GetClientRect(hWnd, &clientRect);
 
 		int width = clientRect.right - clientRect.left;
 		int height = clientRect.bottom - clientRect.top;
 
-		App::GetInstance().GetRenderer()->Resize(width , height);
+		App::GetInstance().GetRenderer()->Resize(width, height);
 		break;
 	}
 
@@ -76,6 +74,7 @@ LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lPara
 		::PostQuitMessage(0);
 		break;
 	}
+#endif
 
 	return ::DefWindowProcW(hWnd , message , wParam , lParam);
 }
@@ -83,14 +82,19 @@ LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lPara
 void App::Init(HINSTANCE hInstance)
 {
 	window   = new Window(hInstance , L"OpenLight" , WndProc);
-	renderer = new CubeRenderer;
+	renderer = new VegetationC1Demo;
+//	renderer = new Renderer();
 	renderer->Init(window->GetHwnd());
 	::ShowWindow(window->GetHwnd() , SW_SHOW);
+
+
+
 }
 
 void App::Update()
 {
 	if (!renderer)	return;
+
 
 	renderer->Render();
 }

@@ -5,7 +5,7 @@
 #define DEFAULT_COMMON_SIZE 32
 #define DEFAULT_SAMPLER_SIZE 8
 
-OpenLight::GPUDescriptorHeapWrap::GPUDescriptorHeapWrap(WRL::ComPtr<ID3D12Device> device)
+OpenLight::GPUDescriptorHeapWrap::GPUDescriptorHeapWrap(ID3D12Device5* device)
 {
 	mDevice = device;
 	for (auto& p : mOffsets)
@@ -29,7 +29,7 @@ OpenLight::GPUDescriptorHeapWrap::GPUDescriptorHeapWrap(WRL::ComPtr<ID3D12Device
 
 }
 
-OpenLight::GPUDescriptorHeapWrap::GPUDescriptorHeapWrapIndex OpenLight::GPUDescriptorHeapWrap::Allocate(UINT size, 
+OpenLight::GPUDescriptorHeapWrap::GPUDescriptorHeapWrapIndex OpenLight::GPUDescriptorHeapWrap::Allocate(UINT size,
 	D3D12_DESCRIPTOR_HEAP_TYPE type)
 {
 	if (type == D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER)
@@ -47,15 +47,18 @@ OpenLight::GPUDescriptorHeapWrap::GPUDescriptorHeapWrapIndex OpenLight::GPUDescr
 		mOffsets[type],
 		mDevice->GetDescriptorHandleIncrementSize(type));
 	mOffsets[type] += size;
+	index.heap = this;
 	return index;
 }
 
 
 
 void OpenLight::GPUDescriptorHeapWrap::AddCBV(GPUDescriptorHeapWrapIndex * index,
-	ID3D12Resource * resource, 
+	ID3D12Resource * resource,
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc)
 {
+	if (index->index >= index->size)
+		ErrorBox("AddCBV");
 	assert(index->type == D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	assert(index->index < index->size);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
@@ -75,8 +78,8 @@ void OpenLight::GPUDescriptorHeapWrap::AddSRV(GPUDescriptorHeapWrapIndex * index
 		index->cpuHandle,
 		index->index,
 		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-	
-	mDevice->CreateShaderResourceView(resource,&srvDesc,handle);
+
+	mDevice->CreateShaderResourceView(resource, &srvDesc, handle);
 	index->index++;
 }
 
@@ -88,8 +91,8 @@ void OpenLight::GPUDescriptorHeapWrap::AddUAV(GPUDescriptorHeapWrapIndex * index
 		index->cpuHandle,
 		index->index,
 		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-	
-	mDevice->CreateUnorderedAccessView(resource, counter,&uavDesc, handle);
+
+	mDevice->CreateUnorderedAccessView(resource, counter, &uavDesc, handle);
 	index->index++;
 }
 
@@ -138,4 +141,65 @@ D3D12_GPU_DESCRIPTOR_HANDLE OpenLight::GPUDescriptorHeapWrap::GPUHandle(const GP
 		mDevice->GetDescriptorHandleIncrementSize(index.type));
 
 	return handle;
+}
+
+OpenLight::GPUUploadHeapWrap::GPUUploadHeapWrap(ID3D12Device * device, UINT capacity)
+{
+	mUploadCapacityInBytes = capacity;
+	mUploadOffsetInBytes   = 0;
+
+	D3D12_HEAP_DESC heapDesc                 = {};
+	heapDesc.Alignment                       = 0; // 64kb ¶ÔÆë
+	heapDesc.SizeInBytes                     = PAD(capacity, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
+	heapDesc.Properties.Type                 = D3D12_HEAP_TYPE_UPLOAD;
+	heapDesc.Properties.CPUPageProperty      = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+	heapDesc.Properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+	heapDesc.Properties.CreationNodeMask     = 0;
+	heapDesc.Properties.VisibleNodeMask      = 0;
+	heapDesc.Flags                           = D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS;
+
+	ThrowIfFailed(device->CreateHeap(&heapDesc, IID_PPV_ARGS(&mUploadHeap)));
+}
+
+bool OpenLight::GPUUploadHeapWrap::createResource(ID3D12Device5 * device,
+	UINT sizeInBytes, 
+	D3D12_RESOURCE_DESC & desc,
+	REFIID riid, 
+	_COM_Outptr_opt_ void ** ppvResource)
+{
+	if (mUploadOffsetInBytes + sizeInBytes >= mUploadCapacityInBytes)
+	{
+
+		return false;
+	}
+
+	ThrowIfFailed(device->CreatePlacedResource(
+		mUploadHeap,
+		mUploadOffsetInBytes,
+		&desc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		riid,
+		ppvResource));
+	mUploadOffsetInBytes = PAD(mUploadOffsetInBytes + sizeInBytes, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
+	return true;
+}
+
+bool OpenLight::GPUUploadHeapWrap::createResource(ID3D12Device5 * device, UINT sizeInBytes, D3D12_RESOURCE_DESC & desc, ID3D12Resource *& resource)
+{
+	if (mUploadOffsetInBytes + sizeInBytes >= mUploadCapacityInBytes)
+	{
+
+		return false;
+	}
+
+	ThrowIfFailed(device->CreatePlacedResource(
+		mUploadHeap,
+		mUploadOffsetInBytes,
+		&desc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&resource)));
+	mUploadOffsetInBytes = PAD(mUploadOffsetInBytes + sizeInBytes, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
+	return true;
 }

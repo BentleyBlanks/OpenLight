@@ -41,8 +41,9 @@ protected:
 	D3D12_VIEWPORT						mViewport;
 	D3D12_RECT							mScissorRect;
 
-	WRL::ComPtr<ID3D12Heap>				mUploadHeap;
-	UINT								mUploadHeapSizeInBytes;
+//	WRL::ComPtr<ID3D12Heap>				mUploadHeap;
+//	UINT								mUploadHeapSizeInBytes;
+	OpenLight::GPUUploadHeapWrap*		mUploadHeap;
 
 	int									mSamplerCount = 3;
 	int									mSamplerIndex = 0;

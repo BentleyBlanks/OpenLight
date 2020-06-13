@@ -12,12 +12,7 @@ using namespace DirectX;
 #endif
 
 
-int  gMouseX = 0;
-int  gMouseY = 0;
-int  gLastMouseX = 0;
-int  gLastMouseY = 0;
-bool gMouseDown = false;
-bool gMouseMove = false;
+
 
 CubeRenderer::CubeRenderer()
 {
@@ -60,29 +55,25 @@ void CubeRenderer::Init(HWND hWnd)
 		mCubeMesh->submeshs[0].indices.size() * sizeof(UINT);
 	// 创建 Upload Heap
 	{
-		D3D12_HEAP_DESC uploadDesc = {};
-		uploadDesc.SizeInBytes = PAD((1<<20), D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
-		uploadDesc.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
-		uploadDesc.Properties.Type = D3D12_HEAP_TYPE_UPLOAD;
-		uploadDesc.Properties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-		uploadDesc.Properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-		uploadDesc.Flags = D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS;
-
-		ThrowIfFailed(mDevice->CreateHeap(&uploadDesc, IID_PPV_ARGS(&mUploadHeap)));
+		mUploadHeap = new OpenLight::GPUUploadHeapWrap(mDevice);
 	}
 
 	// 创建 VB IB CB
 	{
 		UINT verticesSizeInBytes = mCubeMesh->submeshs[0].vertices.size() * sizeof(StandardVertex);
 		UINT indicesSizeInBytes = mCubeMesh->submeshs[0].indices.size() * sizeof(UINT);
-		UINT offset = 0;
-		ThrowIfFailed(mDevice->CreatePlacedResource(
-			mUploadHeap.Get(),
-			offset,
-			&CD3DX12_RESOURCE_DESC::Buffer(verticesSizeInBytes),
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
+		//UINT offset = 0;
+		//ThrowIfFailed(mDevice->CreatePlacedResource(
+		//	mUploadHeap.Get(),
+		//	offset,
+		//	&CD3DX12_RESOURCE_DESC::Buffer(verticesSizeInBytes),
+		//	D3D12_RESOURCE_STATE_GENERIC_READ,
+		//	nullptr,
+		//	IID_PPV_ARGS(&mCubeMeshVB)));
+		assert(mUploadHeap->createResource(mDevice, verticesSizeInBytes,
+			CD3DX12_RESOURCE_DESC::Buffer(verticesSizeInBytes),
 			IID_PPV_ARGS(&mCubeMeshVB)));
+	
 
 		mCubeMeshVBView.BufferLocation = mCubeMeshVB->GetGPUVirtualAddress();
 		mCubeMeshVBView.StrideInBytes = sizeof(StandardVertex);
@@ -94,13 +85,17 @@ void CubeRenderer::Init(HWND hWnd)
 		std::memcpy(p, &mCubeMesh->submeshs[0].vertices[0], verticesSizeInBytes);
 		mCubeMeshVB->Unmap(0,nullptr);
 
-		offset = PAD(offset + verticesSizeInBytes, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT),
+		/*offset = PAD(offset + verticesSizeInBytes, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT),
 		ThrowIfFailed(mDevice->CreatePlacedResource(
 			mUploadHeap.Get(),
 			offset,
 			&CD3DX12_RESOURCE_DESC::Buffer(indicesSizeInBytes),
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr,
+			IID_PPV_ARGS(&mCubeMeshIB)));*/
+		assert(mUploadHeap->createResource(mDevice,
+			indicesSizeInBytes,
+			CD3DX12_RESOURCE_DESC::Buffer(indicesSizeInBytes),
 			IID_PPV_ARGS(&mCubeMeshIB)));
 
 		mCubeMeshIBView.BufferLocation = mCubeMeshIB->GetGPUVirtualAddress();
@@ -111,13 +106,17 @@ void CubeRenderer::Init(HWND hWnd)
 		std::memcpy(p, &mCubeMesh->submeshs[0].indices[0], indicesSizeInBytes);
 		mCubeMeshIB->Unmap(0, nullptr);
 
-		offset = PAD(offset + indicesSizeInBytes, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
-		ThrowIfFailed(mDevice->CreatePlacedResource(
-			mUploadHeap.Get(),
-			offset,
-			&CD3DX12_RESOURCE_DESC::Buffer(PAD(sizeof(CBTrans),256)),
-			D3D12_RESOURCE_STATE_GENERIC_READ,
-			nullptr,
+		/*	offset = PAD(offset + indicesSizeInBytes, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
+			ThrowIfFailed(mDevice->CreatePlacedResource(
+				mUploadHeap.Get(),
+				offset,
+				&CD3DX12_RESOURCE_DESC::Buffer(PAD(sizeof(CBTrans),256)),
+				D3D12_RESOURCE_STATE_GENERIC_READ,
+				nullptr,
+				IID_PPV_ARGS(&mCBTrans)));*/
+		assert(mUploadHeap->createResource(mDevice,
+			PADCB(sizeof(CBTrans)),
+			CD3DX12_RESOURCE_DESC::Buffer(PADCB(sizeof(CBTrans))),
 			IID_PPV_ARGS(&mCBTrans)));
 
 		ThrowIfFailed(mCBTrans->Map(0, nullptr, reinterpret_cast<void**>(&mCBTransGPUPtr)));
@@ -204,7 +203,7 @@ void CubeRenderer::Init(HWND hWnd)
 	// 创建 Texture Resource
 	auto commandAllocator = mCommandAllocator[0];
 	ThrowIfFailed(commandAllocator->Reset());
-	ThrowIfFailed(mCommandList->Reset(commandAllocator.Get(), nullptr));
+	ThrowIfFailed(mCommandList->Reset(commandAllocator, nullptr));
 	mTexture = TextureMgr::LoadTexture2DFromFile("F:\\OpenLight\\timg.jpg",
 		mDevice,
 		mCommandList,
@@ -283,7 +282,7 @@ void CubeRenderer::Render()
 	auto backBuffer = mBackBuffer[mCurrentBackBufferIndex];
 	
 	commandAllocator->Reset();
-	mCommandList->Reset(commandAllocator.Get(), nullptr);
+	mCommandList->Reset(commandAllocator, nullptr);
 
 	// 切换 Scene Color 状态	
 	if(mGammaCorrect)
@@ -306,7 +305,7 @@ void CubeRenderer::Render()
 	D3D12_RESOURCE_BARRIER barrier = {};
 	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource = backBuffer.Get();
+	barrier.Transition.pResource = backBuffer;
 	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
 	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
@@ -389,19 +388,21 @@ void CubeRenderer::Render()
 
 	}
 
+	// GUI
+	renderGUI();
 
 	// Present
 	barrier = {};
 	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource = backBuffer.Get();
+	barrier.Transition.pResource = backBuffer;
 	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
 	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 	mCommandList->ResourceBarrier(1, &barrier);
 
 	ThrowIfFailed(mCommandList->Close());
-	ID3D12CommandList* const commandLists[] = { mCommandList.Get() };
+	ID3D12CommandList* const commandLists[] = { mCommandList };
 	mCommandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
 
 	UINT syncInterval = AppConfig::VSync ? 1 : 0;
@@ -411,7 +412,7 @@ void CubeRenderer::Render()
 	mFrameFenceValues[mCurrentBackBufferIndex] = Signal(mCommandQueue, mFence, mFenceValue);
 
 	mCurrentBackBufferIndex = mSwapChain->GetCurrentBackBufferIndex();
-	WaitForFenceValue(mFence.Get(), mFrameFenceValues[mCurrentBackBufferIndex], mFenceEvent);
+	WaitForFenceValue(mFence, mFrameFenceValues[mCurrentBackBufferIndex], mFenceEvent);
 }
 
 void CubeRenderer::InitSkyBox()
@@ -419,7 +420,7 @@ void CubeRenderer::InitSkyBox()
 	mSkyBoxMesh = ObjMeshLoader::loadObjMeshFromFile("F:\\OpenLight\\Sphere.obj");
 	auto commandAllocator = mCommandAllocator[0];
 	ThrowIfFailed(commandAllocator->Reset());
-	ThrowIfFailed(mCommandList->Reset(commandAllocator.Get(), nullptr));
+	ThrowIfFailed(mCommandList->Reset(commandAllocator, nullptr));
 	mSkyBoxEnvMap = TextureMgr::LoadTexture2DFromFile("F:\\OpenLight\\HDR_029_Sky_Cloudy_Ref.exr",
 		mDevice,
 		mCommandList,
@@ -647,6 +648,17 @@ void CubeRenderer::Update()
 	XMStoreFloat4x4(&mSkyBoxCBTransGPUPtr->wvp, XMMatrixTranspose(world * vp));
 	XMStoreFloat4x4(&mSkyBoxCBTransGPUPtr->world, XMMatrixTranspose(world));
 	XMStoreFloat4x4(&mSkyBoxCBTransGPUPtr->invTranspose, XMMatrixTranspose(world));
+
+
+	// GUI
+	{
+		ImGui_ImplDX12_NewFrame();
+		ImGui_ImplWin32_NewFrame();
+		ImGui::NewFrame();
+		{
+			ImGui::ShowDemoWindow();
+		}
+	}
 }
 
 struct QuadVertex

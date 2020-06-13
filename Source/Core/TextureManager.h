@@ -26,4 +26,11 @@ public:
 		WRL::ComPtr<ID3D12CommandQueue> commandQueue,
 		TextureInfo* pTextureInfo = nullptr);
 
+	static ID3D12Resource* LoadTexture2DFromFile2(
+		const std::string& fileName,
+		ID3D12Device5* device,
+		ID3D12GraphicsCommandList* commandList,
+		ID3D12CommandQueue*		   commandQueue,
+		TextureInfo* pTextureInfo = nullptr);
+
 };

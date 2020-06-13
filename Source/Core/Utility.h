@@ -3,15 +3,24 @@
 #include <Windows.h>
 #include <algorithm>
 #include <DirectXMath.h>
-
+#include <sstream>
 #define D3D_HLSL_DEFUALT_INCLUDE ((ID3DInclude*)(UINT_PTR)1)
 #define PAD(x,y)		((x+ (y-1) )&(~(y-1)))
 #define PADCB(x)		PAD(x,256)
+#define ReleaseCom(p)	{ if(p) {p->Release();p=nullptr;}}
+#define ErrorBox(text) {MessageBox(0, text, 0, 0);}
+#define ErrorBoxW(text) {MessageBoxW(0, text, 0, 0);}
 using namespace DirectX;
 
 inline void ThrowIfFailed(HRESULT hr)
 {
-	if (FAILED(hr))	throw std::exception();
+	if (FAILED(hr))
+	{
+		std::ostringstream oss;
+		oss << std::hex << hr;
+		ErrorBox(oss.str().c_str());
+		throw std::exception();
+	}
 }
 
 inline XMFLOAT3 normalize(const XMFLOAT3& v)
