@@ -1,7 +1,7 @@
 #include "Renderer.h"
 #include "Utility.h"
 #include <cassert>
-
+#include "d3dx12.h"
 #include <tchar.h>
 
 
@@ -155,6 +155,9 @@ bool CheckTearingSupport()
 
 IDXGISwapChain4* CreateSwapChain(HWND hWnd , ID3D12CommandQueue* commandQueue , uint32_t width , uint32_t height , uint32_t bufferCount)
 {
+	
+
+
 	IDXGISwapChain4* dxgiSwapChain4 = nullptr;
 	IDXGIFactory4*   dxgiFactory4 = nullptr;
 
@@ -225,6 +228,8 @@ void UpdateRenderTargetViews(ID3D12Device5* device , IDXGISwapChain4* swapChain 
 		rtvHandle.ptr += rtvDescriptorSize;
 	}
 }
+
+
 
 ID3D12CommandAllocator* CreateCommandAllocator(ID3D12Device5* device , D3D12_COMMAND_LIST_TYPE type)
 {
@@ -340,7 +345,35 @@ void Renderer::Init(HWND hWnd)
 	mRTVDescriptorHeap = CreateDescriptorHeap(mDevice , D3D12_DESCRIPTOR_HEAP_TYPE_RTV, AppConfig::NumFrames);
 	mRTVDescriptorSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
+	mDSVDescriptorHeap = CreateDescriptorHeap(mDevice, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1);
+	mDSVDescriptorSize = mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+
 	UpdateRenderTargetViews(mDevice , mSwapChain , mRTVDescriptorHeap , mBackBuffer);
+	
+
+	D3D12_CLEAR_VALUE optClear;
+	optClear.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	optClear.DepthStencil.Depth = 1.0f;
+	optClear.DepthStencil.Stencil = 0;
+	ThrowIfFailed(mDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Tex2D(
+			DXGI_FORMAT_D24_UNORM_S8_UINT,
+			AppConfig::ClientWidth,
+			AppConfig::ClientHeight,
+			1, 1, 1, 0,
+			D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
+		D3D12_RESOURCE_STATE_DEPTH_WRITE,
+		&optClear,
+		IID_PPV_ARGS(&mDepthBuffer)));
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	dsvDesc.Texture2D.MipSlice = 0;
+	mDevice->CreateDepthStencilView(mDepthBuffer, &dsvDesc, mDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+
+
 
 	for (int i = 0; i < AppConfig::NumFrames; i++)
 	{

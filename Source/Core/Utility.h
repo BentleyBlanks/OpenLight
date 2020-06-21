@@ -12,6 +12,23 @@
 #define ErrorBoxW(text) {MessageBoxW(0, text, 0, 0);}
 using namespace DirectX;
 
+enum EFresnelMaterialName
+{
+	EWater = 0,
+	EPlasticLow,
+	EPlasticHigh,
+	EGlass,
+	EDiamond,
+	EIron,
+	ECopper,
+	EGold,
+	EAluminum,
+	ESilver,
+	EFresnelMaterialNameCount
+};
+
+
+
 inline void ThrowIfFailed(HRESULT hr)
 {
 	if (FAILED(hr))
@@ -40,7 +57,7 @@ inline XMFLOAT3 operator+(const XMFLOAT3& v1, const XMFLOAT3& v2)
 {
 	return XMFLOAT3(v1.x + v2.x,
 		v1.y + v2.y,
-		v1.z + v1.z);
+		v1.z + v2.z);
 }
 
 inline XMFLOAT3 operator-(const XMFLOAT3& v1, const XMFLOAT3& v2)

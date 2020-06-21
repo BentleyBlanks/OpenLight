@@ -8,6 +8,7 @@
 #include "AppConfig.h"
 #include "Renderer.h"
 #include "VegetationDemo/C1/C1Demo.h"
+#include "VegetationDemo/C2/C2Demo.h"
 #include "Window.h"
 #include "App.h"
 
@@ -82,7 +83,7 @@ LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lPara
 void App::Init(HINSTANCE hInstance)
 {
 	window   = new Window(hInstance , L"OpenLight" , WndProc);
-	renderer = new VegetationC1Demo;
+	renderer = new VegetationC2Demo;
 //	renderer = new Renderer();
 	renderer->Init(window->GetHwnd());
 	::ShowWindow(window->GetHwnd() , SW_SHOW);

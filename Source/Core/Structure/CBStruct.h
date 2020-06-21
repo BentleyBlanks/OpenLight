@@ -70,6 +70,14 @@ struct CBIBLInfo
 
 };
 
+struct CBGrassInfo
+{
+	XMFLOAT4	cameraPositionW;
+	XMFLOAT4	grassSize;
+	XMFLOAT4	windTime;
+	XMFLOAT4	maxDepth;
+	XMFLOAT4X4	vp;
+};
 
 
 

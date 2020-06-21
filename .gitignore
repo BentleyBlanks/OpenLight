@@ -57,3 +57,7 @@ timg.jpg
 *.exr
 *.rar
 *.zip
+*.raw
+*.png
+*.jpg
+*.dds

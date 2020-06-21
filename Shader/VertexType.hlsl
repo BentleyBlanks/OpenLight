@@ -32,3 +32,20 @@ struct SkyBoxPSInput
     float4 positionH    :SV_POSITION;
     float3 positionL    :POSITION;
 };
+
+
+struct GrassGSInput
+{
+    float3 positionW    :POSITION;
+    float2 sizeW        :TEXCOORD;
+};
+
+
+struct GrassGSOutput
+{
+    float4 positionH    :SV_POSITION;
+    float3 positionW    :POSITION;
+    float3 normalW      :NORMAL;
+    float3 tangentW     :TANGENT;
+    float2 texcoord     :TEXCOORD;
+};

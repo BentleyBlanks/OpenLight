@@ -43,21 +43,25 @@ public:
 protected:
 
 
-	ID3D12Device5*				mDevice       = nullptr;
-	ID3D12CommandQueue*			mCommandQueue = nullptr;
-	IDXGISwapChain4*			mSwapChain    = nullptr;
-	ID3D12GraphicsCommandList*	mCommandList  = nullptr;
+	ID3D12Device5*				mDevice            = nullptr;
+	ID3D12CommandQueue*			mCommandQueue      = nullptr;
+	IDXGISwapChain4*			mSwapChain         = nullptr;
+	ID3D12GraphicsCommandList*	mCommandList       = nullptr;
 	ID3D12DescriptorHeap*		mRTVDescriptorHeap = nullptr;;
+	ID3D12DescriptorHeap*		mDSVDescriptorHeap = nullptr;
 	ID3D12Resource*				mBackBuffer[AppConfig::NumFrames];
+	ID3D12Resource*				mDepthBuffer = nullptr;
 	ID3D12CommandAllocator*		mCommandAllocator[AppConfig::NumFrames];
 
 
 	ID3D12DescriptorHeap*				   mPd3dSrvDescHeap = nullptr;
 
 	uint32_t							   mRTVDescriptorSize;
+	uint32_t							   mDSVDescriptorSize;
 	uint32_t							   mCurrentBackBufferIndex = 0;
 	HWND								   mHWND;
 
+	UINT								   mMSAAQuality = 0;
 
 	// Synchronization Objects
 	ID3D12Fence* mFence = nullptr;

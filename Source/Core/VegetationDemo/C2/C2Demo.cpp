@@ -1,30 +1,31 @@
-#include"C1Demo.h"
+#include "C2Demo.h"
 #include "Utility.h"
 #include "TextureManager.h"
 #include <chrono>
 #include "Structure/Terrain.h"
 extern void UpdateRenderTargetViews(ID3D12Device5* device, IDXGISwapChain4* swapChain, ID3D12DescriptorHeap* descriptorHeap, ID3D12Resource* backBufferList[AppConfig::NumFrames]);
 
-int gSelectedFresnelIndex = 0;
+
+
 
 struct QuadVertex
 {
 	XMFLOAT3 positionL;
 	XMFLOAT2 texcoord;
 };
-VegetationC1Demo::VegetationC1Demo()
+VegetationC2Demo::VegetationC2Demo()
 {
 	mCamera = new RoamCamera(
 		XMFLOAT3(0, 0, 1),
 		XMFLOAT3(0, 1, 0),
 		XMFLOAT3(0, 5, -40),
-		0.1f,
-		2000.f,
+		0.01f,
+		10000.f,
 		AppConfig::ClientWidth,
 		AppConfig::ClientHeight);
 }
 
-VegetationC1Demo::~VegetationC1Demo()
+VegetationC2Demo::~VegetationC2Demo()
 {
 	ReleaseCom(mRootSignature);
 	ReleaseCom(mIBLRootSignature);
@@ -34,6 +35,12 @@ VegetationC1Demo::~VegetationC1Demo()
 	ReleaseCom(mPostprocessPSO);
 	ReleaseCom(mQuadVB);
 	ReleaseCom(mQuadIB);
+	ReleaseCom(mPSOTerrainRGBA32);
+	ReleaseCom(mTerrainSignature);
+	ReleaseCom(mPSOGrassRGBA32);
+	ReleaseCom(mPSOGrassCullRGBA32);
+	ReleaseCom(mGrassSignature);
+
 
 	for (int i = 0; i < AppConfig::NumFrames; ++i)
 	{
@@ -45,7 +52,7 @@ VegetationC1Demo::~VegetationC1Demo()
 	delete mCamera;
 }
 
-void VegetationC1Demo::Init(HWND hWnd)
+void VegetationC2Demo::Init(HWND hWnd)
 {
 
 
@@ -75,14 +82,14 @@ void VegetationC1Demo::Init(HWND hWnd)
 
 	// 创建 VB IB
 	{
-		
+
 		UINT verticesSizeInBytes = bunny->mesh->submeshs[0].vertices.size() * sizeof(StandardVertex);
 		UINT indicesSizeInBytes = bunny->mesh->submeshs[0].indices.size() * sizeof(UINT);
 
 		bunny->vb = mUploadHeap->createResource(mDevice, verticesSizeInBytes,
 			CD3DX12_RESOURCE_DESC::Buffer(verticesSizeInBytes));
 
-	
+
 		bunny->vbView.BufferLocation = bunny->vb->GetGPUVirtualAddress();
 
 		bunny->vbView.StrideInBytes = sizeof(StandardVertex);
@@ -112,16 +119,22 @@ void VegetationC1Demo::Init(HWND hWnd)
 	// 创建 CPUFrameResource
 	for (int i = 0; i < AppConfig::NumFrames; ++i)
 	{
-		mCPUFrameResource.push_back(std::make_unique<VegetationC1FrameResource>(mDevice, mCommandAllocator[i], mDescriptorHeap));
+		mCPUFrameResource.push_back(std::make_unique<VegetationC2FrameResource>(mDevice, mCommandAllocator[i], mDescriptorHeap));
 	}
 
 
 
 
 	// 创建 Shader
-	WRL::ComPtr<ID3DBlob> vs	= nullptr;
-	WRL::ComPtr<ID3DBlob> ps	= nullptr;
-	WRL::ComPtr<ID3DBlob> psIBL = nullptr;
+	WRL::ComPtr<ID3DBlob> vs          = nullptr;
+	WRL::ComPtr<ID3DBlob> ps          = nullptr;
+	WRL::ComPtr<ID3DBlob> psIBL       = nullptr;
+	WRL::ComPtr<ID3DBlob> vsTerrain   = nullptr;
+	WRL::ComPtr<ID3DBlob> psTerrain   = nullptr;
+	WRL::ComPtr<ID3DBlob> vsGrass     = nullptr;
+	WRL::ComPtr<ID3DBlob> gsGrass     = nullptr;
+	WRL::ComPtr<ID3DBlob> gsGrassCull = nullptr;
+	WRL::ComPtr<ID3DBlob> psGrass     = nullptr;
 #if defined(_DEBUG)		
 	UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #else
@@ -138,9 +151,27 @@ void VegetationC1Demo::Init(HWND hWnd)
 	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\PBR\\PBRModelPS.hlsl",
 		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "PBRModelIBLMainPS", "ps_5_0", compileFlags, 0, &psIBL, nullptr));
 
+	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\TerrainVS.hlsl",
+		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "TerrainMainVS", "vs_5_0", compileFlags, 0, &vsTerrain, nullptr));
+	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\TerrainPS.hlsl",
+		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "TerrainMainPS", "ps_5_0", compileFlags, 0, &psTerrain, nullptr));
+
+	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\GrassVS.hlsl",
+		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "GrassMainVS", "vs_5_0", compileFlags, 0, &vsGrass, nullptr));
+
+	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\GrassGS.hlsl",
+		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "GrassMainGS", "gs_5_0", compileFlags, 0, &gsGrass, nullptr));
+
+	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\GrassGS.hlsl",
+		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "GrassCullMainGS", "gs_5_0", compileFlags, 0, &gsGrassCull, nullptr));
+
+	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\GrassPS.hlsl",
+		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "GrassMainPS", "ps_5_0", compileFlags, 0, &psGrass, nullptr));
+
 
 	// 创建根签名参数
-	CD3DX12_ROOT_PARAMETER1 rootParameters[4];
+	CD3DX12_ROOT_PARAMETER1 rootParameters[6];
+#if 0
 	CD3DX12_DESCRIPTOR_RANGE1 descRange[4];
 	descRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
 	descRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 3, 0);
@@ -150,10 +181,21 @@ void VegetationC1Demo::Init(HWND hWnd)
 	rootParameters[1].InitAsDescriptorTable(1, &descRange[1], D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParameters[2].InitAsDescriptorTable(1, &descRange[2], D3D12_SHADER_VISIBILITY_PIXEL);
 	rootParameters[3].InitAsDescriptorTable(1, &descRange[3], D3D12_SHADER_VISIBILITY_PIXEL);
-	
+#endif // 0
+	CD3DX12_DESCRIPTOR_RANGE1 descRange[2];
+	descRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
+	descRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0);
+	rootParameters[0].InitAsConstantBufferView(0,0,D3D12_ROOT_DESCRIPTOR_FLAG_NONE,D3D12_SHADER_VISIBILITY_VERTEX);
+	rootParameters[1].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_PIXEL);
+	rootParameters[2].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_PIXEL);
+	rootParameters[3].InitAsConstantBufferView(2, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_PIXEL);
+	rootParameters[4].InitAsDescriptorTable(1, &descRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
+	rootParameters[5].InitAsDescriptorTable(1, &descRange[1], D3D12_SHADER_VISIBILITY_PIXEL);
+
+
 	// 根签名描述
 	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
-	rootSignatureDesc.Init_1_1(2, rootParameters,
+	rootSignatureDesc.Init_1_1(4, rootParameters,
 		0, nullptr,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 	// 创建根签名
@@ -169,7 +211,7 @@ void VegetationC1Demo::Init(HWND hWnd)
 		pSignatureBlob->GetBufferSize(),
 		IID_PPV_ARGS(&mRootSignature)));
 
-	rootSignatureDesc.Init_1_1(4, rootParameters,
+	rootSignatureDesc.Init_1_1(6, rootParameters,
 		0, nullptr,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 	// 创建根签名
@@ -183,8 +225,9 @@ void VegetationC1Demo::Init(HWND hWnd)
 		pSignatureBlob->GetBufferSize(),
 		IID_PPV_ARGS(&mIBLRootSignature)));
 
+
 	// 创建 PSO
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc				 = {};
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 	psoDesc.InputLayout                                      = { inputDesc, _countof(inputDesc) };
 	psoDesc.pRootSignature                                   = mRootSignature;
 	psoDesc.VS.pShaderBytecode                               = vs->GetBufferPointer();
@@ -199,57 +242,137 @@ void VegetationC1Demo::Init(HWND hWnd)
 	psoDesc.DepthStencilState.DepthEnable                    = TRUE;
 	psoDesc.DepthStencilState.StencilEnable                  = FALSE;
 	psoDesc.DepthStencilState.DepthFunc                      = D3D12_COMPARISON_FUNC_LESS;
+	psoDesc.DepthStencilState.DepthWriteMask				 = D3D12_DEPTH_WRITE_MASK_ALL;
 	psoDesc.PrimitiveTopologyType                            = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	psoDesc.NumRenderTargets                                 = 1;
 	psoDesc.SampleMask                                       = UINT_MAX;
 	psoDesc.SampleDesc.Count                                 = 1;
 	psoDesc.RTVFormats[0]                                    = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	psoDesc.DSVFormat                                        = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSORGBA32)));
 	psoDesc.pRootSignature                                   = mIBLRootSignature;
 	psoDesc.PS.pShaderBytecode                               = psIBL->GetBufferPointer();
 	psoDesc.PS.BytecodeLength                                = psIBL->GetBufferSize();
 	ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOIBLRGBA32)));
 
+	// 地形根签名和 PSO
+	{
+		CD3DX12_ROOT_PARAMETER1 rootParameters[3];
+		CD3DX12_DESCRIPTOR_RANGE1 descRange[2];
+		descRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+		descRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0);
+		rootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_VERTEX);
+		rootParameters[1].InitAsDescriptorTable(1, &descRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
+		rootParameters[2].InitAsDescriptorTable(1, &descRange[1], D3D12_SHADER_VISIBILITY_PIXEL);
+
+		rootSignatureDesc = {};
+		rootSignatureDesc.Init_1_1(3, rootParameters,
+			0, nullptr,
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		// 创建根签名
+		ThrowIfFailed(D3DX12SerializeVersionedRootSignature(
+			&rootSignatureDesc,
+			D3D_ROOT_SIGNATURE_VERSION_1_1,
+			&pSignatureBlob,
+			&pErrorBlob));
+		ThrowIfFailed(mDevice->CreateRootSignature(0,
+			pSignatureBlob->GetBufferPointer(),
+			pSignatureBlob->GetBufferSize(),
+			IID_PPV_ARGS(&mTerrainSignature)));
+
+		psoDesc.pRootSignature     = mTerrainSignature;
+		psoDesc.VS.pShaderBytecode = vsTerrain->GetBufferPointer();
+		psoDesc.VS.BytecodeLength  = vsTerrain->GetBufferSize();
+		psoDesc.PS.pShaderBytecode = psTerrain->GetBufferPointer();
+		psoDesc.PS.BytecodeLength  = psTerrain->GetBufferSize();
+		ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOTerrainRGBA32)));
+
+	}
+	// Grass 根签名和 PSO
+	{
+		CD3DX12_ROOT_PARAMETER1 rootParameters[3];
+		CD3DX12_DESCRIPTOR_RANGE1 descRange[2];
+		descRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0);
+		descRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0);
+		rootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
+		rootParameters[1].InitAsDescriptorTable(1, &descRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
+		rootParameters[2].InitAsDescriptorTable(1, &descRange[1], D3D12_SHADER_VISIBILITY_PIXEL);
+
+		rootSignatureDesc = {};
+		rootSignatureDesc.Init_1_1(3, rootParameters,
+			0, nullptr,
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		// 创建根签名
+		ThrowIfFailed(D3DX12SerializeVersionedRootSignature(
+			&rootSignatureDesc,
+			D3D_ROOT_SIGNATURE_VERSION_1_1,
+			&pSignatureBlob,
+			&pErrorBlob));
+		ThrowIfFailed(mDevice->CreateRootSignature(0,
+			pSignatureBlob->GetBufferPointer(),
+			pSignatureBlob->GetBufferSize(),
+			IID_PPV_ARGS(&mGrassSignature)));
+
+		psoDesc.pRootSignature = mGrassSignature;
+		psoDesc.PrimitiveTopologyType            = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+//		psoDesc.RasterizerState.FillMode		 = D3D12_FILL_MODE_WIREFRAME;
+		psoDesc.RasterizerState.CullMode		 = D3D12_CULL_MODE_NONE;
+		psoDesc.BlendState.AlphaToCoverageEnable = true;
+		psoDesc.VS.pShaderBytecode               = vsGrass->GetBufferPointer();
+		psoDesc.VS.BytecodeLength                = vsGrass->GetBufferSize();
+		psoDesc.GS.pShaderBytecode               = gsGrass->GetBufferPointer();
+		psoDesc.GS.BytecodeLength                = gsGrass->GetBufferSize();
+		psoDesc.PS.pShaderBytecode               = psGrass->GetBufferPointer();
+		psoDesc.PS.BytecodeLength                = psGrass->GetBufferSize();
+		ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOGrassRGBA32)));
+		psoDesc.GS.pShaderBytecode               = gsGrassCull->GetBufferPointer();
+		psoDesc.GS.BytecodeLength                = gsGrassCull->GetBufferSize();
+		ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOGrassCullRGBA32)));
+	}
+
 	mViewport = { 0.0f, 0.0f
 		, static_cast<float>(AppConfig::ClientWidth), static_cast<float>(AppConfig::ClientHeight), D3D12_MIN_DEPTH, D3D12_MAX_DEPTH };
 	mScissorRect = { 0, 0
 		, static_cast<LONG>(AppConfig::ClientWidth), static_cast<LONG>(AppConfig::ClientHeight) };
 
-	
+
 	// 创建 Sampler
 	D3D12_SAMPLER_DESC samplerDesc = {  };
-	samplerDesc.Filter             = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-	samplerDesc.MinLOD             = -D3D12_FLOAT32_MAX;
-	samplerDesc.MaxLOD             = D3D12_FLOAT32_MAX;
-	samplerDesc.MipLODBias         = 0.0f;
-	samplerDesc.MaxAnisotropy      = 1;
-	samplerDesc.ComparisonFunc     = D3D12_COMPARISON_FUNC_NEVER;
-	samplerDesc.BorderColor[0]     = 1.0f;
-	samplerDesc.BorderColor[1]     = 0.0f;
-	samplerDesc.BorderColor[2]     = 1.0f;
-	samplerDesc.BorderColor[3]     = 1.0f;
-	samplerDesc.AddressU           = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	samplerDesc.AddressV           = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	samplerDesc.AddressW           = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	samplerDesc.MinLOD = -D3D12_FLOAT32_MAX;
+	samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
+	samplerDesc.MipLODBias = 0.0f;
+	samplerDesc.MaxAnisotropy = 1;
+	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+	samplerDesc.BorderColor[0] = 1.0f;
+	samplerDesc.BorderColor[1] = 0.0f;
+	samplerDesc.BorderColor[2] = 1.0f;
+	samplerDesc.BorderColor[3] = 1.0f;
+	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 	mSamplerIndices = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 	mDescriptorHeap->AddSampler(&mSamplerIndices, samplerDesc);
-	
+
 
 	InitSkyBox();
 	InitPostprocess();
 	InitIBL();
-
+	ThrowIfFailed(mCommandAllocator[0]->Reset());
+	ThrowIfFailed(mCommandList->Reset(mCommandAllocator[0], nullptr));
+	mTerrain = std::shared_ptr<Terrain>(new Terrain(mDevice, mCommandList,mCommandQueue,mDescriptorHeap,"F:\\OpenLight\\Resource\\heightmap256.png", 20.f,1,1));
+	mGrass = std::shared_ptr<Grass>(new Grass(mDevice, mCommandAllocator[0], mCommandList, mCommandQueue, mDescriptorHeap,mTerrain.get()));
 	// 初始化材质和光源
 	{
-		mPointLights.lightPositions[0]  = XMFLOAT4(50, 10, -20, 1.f);
+		mPointLights.lightPositions[0] = XMFLOAT4(50, 10, -20, 1.f);
 		mPointLights.lightIntensitys[0] = XMFLOAT4(5000, 5000, 5000, 1.f);
-		mPointLights.lightPositions[1]  = XMFLOAT4(20, -20, 20, 1.f);
+		mPointLights.lightPositions[1] = XMFLOAT4(20, -20, 20, 1.f);
 		mPointLights.lightIntensitys[1] = XMFLOAT4(0, 0, 0, 1.f);
-		mPointLights.lightPositions[2]  = XMFLOAT4(-20, 20, 20, 1.f);
+		mPointLights.lightPositions[2] = XMFLOAT4(-20, 20, 20, 1.f);
 		mPointLights.lightIntensitys[2] = XMFLOAT4(0, 100, 100, 1.f);
-		mPointLights.lightPositions[3]  = XMFLOAT4(20, 20, 20, 1.f);
+		mPointLights.lightPositions[3] = XMFLOAT4(20, 20, 20, 1.f);
 		mPointLights.lightIntensitys[3] = XMFLOAT4(0, 0, 0, 1.f);
-		mPointLights.lightSizeFloat     = XMFLOAT4(4.f, 4.f, 4.f, 4.f);
+		mPointLights.lightSizeFloat = XMFLOAT4(4.f, 4.f, 4.f, 4.f);
 
 		bunny->world = XMFLOAT4X4(
 			10, 0, 0, 0,
@@ -258,17 +381,26 @@ void VegetationC1Demo::Init(HWND hWnd)
 			0, 0, 0, 1
 		);
 		bunny->material.materialAlbedo = XMFLOAT4(1, 0, 0, 0.5f);
-		bunny->material.materialInfo   = XMFLOAT4(0.5f, 0.5f, 0.5f, 0.5f);
+		bunny->material.materialInfo = XMFLOAT4(0.5f, 0.5f, 0.5f, 0.5f);
+	
+		mTerrain->world= XMFLOAT4X4(
+			1, 0, 0, 0,
+			0, 1, 0, 0,
+			0, 0, 1, 0,
+			0, 0, 0, 1
+		);
 	}
+
+
 }
 
-void VegetationC1Demo::Render()
+void VegetationC2Demo::Render()
 {
 	Update();
 
 	auto commandAllocator = mCommandAllocator[mCurrentBackBufferIndex];
 	auto backBuffer = mBackBuffer[mCurrentBackBufferIndex];
-	
+
 
 	commandAllocator->Reset();
 	mCommandList->Reset(commandAllocator, nullptr);
@@ -305,16 +437,21 @@ void VegetationC1Demo::Render()
 	D3D12_CPU_DESCRIPTOR_HANDLE rtv;
 
 	rtv = mPostprocessRTVIndex[mCurrentBackBufferIndex].cpuHandle;
-	
+
 
 	//设置渲染目标
-	mCommandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+	mCommandList->OMSetRenderTargets(1, &rtv, FALSE,&mDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 
 	mCommandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+	mCommandList->ClearDepthStencilView(mDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
+		1.f, 0, 0, nullptr);
 
 	// 渲染天空盒
 	RenderSkyBox();
-
+	// 渲染地面
+	RenderTerrain();
+	RenderGrass();
 	if (mUseIBL)
 	{
 		mCommandList->SetGraphicsRootSignature(mIBLRootSignature);
@@ -335,19 +472,24 @@ void VegetationC1Demo::Render()
 	//mCommandList->SetGraphicsRootDescriptorTable(1, mDescriptorHeap->GPUHandle(mSamplerIndices[mSamplerIndex]));
 
 	// 设置 CBV
+	auto& frameResource = mCPUFrameResource[mCurrentBackBufferIndex];
+	//mCommandList->SetGraphicsRootDescriptorTable(
+	//	0, mDescriptorHeap->GPUHandle(mCPUFrameResource[mCurrentBackBufferIndex]->cbTransIndex));
+	//mCommandList->SetGraphicsRootDescriptorTable(
+	//	1, mDescriptorHeap->GPUHandle(mCPUFrameResource[mCurrentBackBufferIndex]->cbCameraMaterialLightIndex));
+#if 0
 
-	mCommandList->SetGraphicsRootDescriptorTable(
-		0, mDescriptorHeap->GPUHandle(mCPUFrameResource[mCurrentBackBufferIndex]->cbTransIndex));
-	mCommandList->SetGraphicsRootDescriptorTable(
-		1, mDescriptorHeap->GPUHandle(mCPUFrameResource[mCurrentBackBufferIndex]->cbCameraMaterialLightIndex));
+	mCommandList->SetGraphicsRootConstantBufferView(0, frameResource->cbTrans->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootConstantBufferView(1, frameResource->cbCamera->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootConstantBufferView(2, frameResource->cbMaterial->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootConstantBufferView(3, frameResource->cbPointLights->GetGPUVirtualAddress());
 
 	if (mUseIBL)
 	{
 		mCommandList->SetGraphicsRootDescriptorTable(
-			2, mDescriptorHeap->GPUHandle(mSkyBox.envMap.IBLSRVIndex));
+			4, mDescriptorHeap->GPUHandle(mSkyBox.envMap.IBLSRVIndex));
 		mCommandList->SetGraphicsRootDescriptorTable(
-			3, mDescriptorHeap->GPUHandle(mSamplerIndices));
-
+			5, mDescriptorHeap->GPUHandle(mSamplerIndices));
 	}
 
 
@@ -357,6 +499,8 @@ void VegetationC1Demo::Render()
 	mCommandList->IASetIndexBuffer(&mPBRMeshs[0]->ibView);
 	//Draw Call！！！
 	mCommandList->DrawIndexedInstanced(mPBRMeshs[0]->mesh->submeshs[0].indices.size(), 1, 0, 0, 0);
+#endif // 0
+
 
 	// 后处理
 	{
@@ -418,7 +562,7 @@ void VegetationC1Demo::Render()
 
 }
 
-void VegetationC1Demo::Resize(uint32_t width, uint32_t height)
+void VegetationC2Demo::Resize(uint32_t width, uint32_t height)
 {
 	if (AppConfig::ClientWidth != width || AppConfig::ClientHeight != height)
 	{
@@ -443,17 +587,19 @@ void VegetationC1Demo::Resize(uint32_t width, uint32_t height)
 	}
 }
 
-void VegetationC1Demo::Update()
+void VegetationC2Demo::Update()
 {
 	FPS();
 	mTimer.tick();
+	static float runTime = 0.f;
 
 
 	// 相机更新
 	static float speed = 20.f;
 	float dt = mTimer.deltaTime();
+	runTime += dt;
 	if (GetAsyncKeyState('W') & 0x8000)
-		mCamera->walk(speed*dt);
+		mCamera->walk(speed * dt);
 
 	if (GetAsyncKeyState('S') & 0x8000)
 		mCamera->walk(-speed * dt);
@@ -462,19 +608,19 @@ void VegetationC1Demo::Update()
 		mCamera->strafe(-speed * dt);
 
 	if (GetAsyncKeyState('D') & 0x8000)
-		mCamera->strafe(speed*dt);
+		mCamera->strafe(speed * dt);
 
 	if (GetAsyncKeyState('Q') & 0x8000)
 		mCamera->yaw(+5.f * dt);
 	if (GetAsyncKeyState('E') & 0x8000)
 		mCamera->yaw(-5.f * dt);
 
-	auto & IO = ImGui::GetIO();
+	auto& IO = ImGui::GetIO();
 	if (IO.MouseDown[2])
 	{
 
 		{
-			
+
 			float dx = XMConvertToRadians(0.25f * IO.MouseDelta.x);
 			float dy = XMConvertToRadians(0.25f * IO.MouseDelta.y);
 			mCamera->pitch(dy);
@@ -508,8 +654,19 @@ void VegetationC1Demo::Update()
 	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbSkyTransPtr->world, XMMatrixTranspose(world));
 	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbSkyTransPtr->invTranspose, XMMatrixTranspose(world));
 	mCPUFrameResource[mCurrentBackBufferIndex]->cbCameraPtr->cameraPositionW = XMFLOAT4(cameraPos.x, cameraPos.y, cameraPos.z, 1.f);
+
+	world = XMLoadFloat4x4(&mTerrain->world);
+	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbTerrainTransPtr->wvp, XMMatrixTranspose(world * vp));
+	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbTerrainTransPtr->world, XMMatrixTranspose(world));
+	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbTerrainTransPtr->invTranspose, XMMatrixTranspose(world));
 	
-	*(mCPUFrameResource[mCurrentBackBufferIndex]->cbMaterialPtr)    = mPBRMeshs[0]->material;
+	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->cameraPositionW = XMFLOAT4(cameraPos.x, cameraPos.y, cameraPos.z, 1.f);
+	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->grassSize       = mGrass->grassInfo.grassSize;
+	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->windTime        = XMFLOAT4(runTime, runTime, runTime, runTime);
+	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->maxDepth        = mGrass->grassInfo.maxDepth;
+	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->vp, XMMatrixTranspose(vp));
+
+	*(mCPUFrameResource[mCurrentBackBufferIndex]->cbMaterialPtr) = mPBRMeshs[0]->material;
 	*(mCPUFrameResource[mCurrentBackBufferIndex]->cbPointLightsPtr) = mPointLights;
 	// GUI
 	{
@@ -528,20 +685,21 @@ void VegetationC1Demo::Update()
 				if (ImGui::BeginTabBar("##Tabs", ImGuiTabBarFlags_None))
 				{
 
-					
+
 					// 材质窗口
+#if 0
 					if (ImGui::BeginTabItem("Material"))
 					{
 						// 显示材质信息
-						auto& material = mPBRMeshs[0]->material;
+//						auto& material = mPBRMeshs[0]->material;
+						auto& material = mTerrain->material;
 						if (ImGui::DragFloat4("Albedo", (float*)&material.materialAlbedo, 0.01f, 0.f, 1.f))
 							mPBRMeshs[0]->materialChanged = true;
 
 						ImGui::SameLine();
-						if (ImGui::Combo("Default", &gSelectedFresnelIndex, AppConfig::GlobalFresnelMaterialName, EFresnelMaterialNameCount))
+						if (ImGui::Combo("Default", &mSelectedFresnelIndex, AppConfig::GlobalFresnelMaterialName, EFresnelMaterialNameCount))
 						{
-							mPBRMeshs[0]->materialChanged = true;
-							mPBRMeshs[0]->material.materialAlbedo = AppConfig::GlobalFresnelMaterial[gSelectedFresnelIndex];
+							mTerrain->material.materialAlbedo = AppConfig::GlobalFresnelMaterial[mSelectedFresnelIndex];
 						}
 
 						if (ImGui::DragFloat("Roughness", &material.materialInfo.x, 0.01f, 0.f, 1.f))
@@ -556,6 +714,8 @@ void VegetationC1Demo::Update()
 						ImGui::EndTabItem();
 
 					}
+#endif // 0
+
 					static const char* pointLightName[] = { "Light0","Light1","Light2","Light3" };
 					// 点光源窗口
 					if (ImGui::BeginTabItem("PointLights"))
@@ -573,6 +733,17 @@ void VegetationC1Demo::Update()
 
 						ImGui::EndTabItem();
 					}
+					if (ImGui::BeginTabItem("Grass"))
+					{
+						
+						ImGui::DragFloat2("GrassSize", (float*)(&mGrass->grassInfo.grassSize));
+						ImGui::DragFloat3("GrassMaxDepth", (float*)(&mGrass->grassInfo.maxDepth));
+						ImGui::Checkbox("Grass Cull", &mCullGrass);
+
+						ImGui::EndTabItem();
+					}
+
+
 					ImGui::EndTabBar();
 
 				}
@@ -587,7 +758,7 @@ void VegetationC1Demo::Update()
 
 }
 
-void VegetationC1Demo::InitPostprocess()
+void VegetationC2Demo::InitPostprocess()
 {
 	// 创建 InputLayout
 	D3D12_INPUT_ELEMENT_DESC inputDesc[] =
@@ -697,7 +868,7 @@ void VegetationC1Demo::InitPostprocess()
 		IID_PPV_ARGS(&mQuadIB)));
 
 	{
-		void *p;
+		void* p;
 		ThrowIfFailed(mQuadVB->Map(0, nullptr, &p));
 		std::memcpy(p, &vertices[0], sizeof(QuadVertex) * vertices.size());
 		mQuadVB->Unmap(0, nullptr);
@@ -727,7 +898,7 @@ void VegetationC1Demo::InitPostprocess()
 				DXGI_FORMAT_R32G32B32A32_FLOAT,
 				AppConfig::ClientWidth,
 				AppConfig::ClientHeight,
-				1, 1, 1, 0,
+				1, 1, mOpenMSAA?4:1, 0,
 				D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
 			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
 			&d3dClearValue,
@@ -744,9 +915,17 @@ void VegetationC1Demo::InitPostprocess()
 		srvDesc.Texture2D.MipLevels = 1;
 		D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
 		rtvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-		rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-		rtvDesc.Texture2D.MipSlice = 0;
-		rtvDesc.Texture2D.PlaneSlice = 0;
+		if (mOpenMSAA)
+		{
+			rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DMS;
+		}
+		else
+		{
+			rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+			rtvDesc.Texture2D.MipSlice = 0;
+			rtvDesc.Texture2D.PlaneSlice = 0;
+		}
+
 		for (int i = 0; i < AppConfig::NumFrames; ++i)
 		{
 
@@ -759,7 +938,7 @@ void VegetationC1Demo::InitPostprocess()
 	}
 }
 
-void VegetationC1Demo::InitSkyBox()
+void VegetationC2Demo::InitSkyBox()
 {
 	mSkyBox.skyBoxMesh = ObjMeshLoader::loadObjMeshFromFile("F:\\OpenLight\\Sphere.obj");
 	auto commandAllocator = mCommandAllocator[0];
@@ -858,25 +1037,26 @@ void VegetationC1Demo::InitSkyBox()
 		IID_PPV_ARGS(&mSkyBox.skyBoxSignature)));
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.InputLayout = { inputDesc, _countof(inputDesc) };
-	psoDesc.pRootSignature = mSkyBox.skyBoxSignature;
-	psoDesc.VS.pShaderBytecode = vs->GetBufferPointer();
-	psoDesc.VS.BytecodeLength = vs->GetBufferSize();
-	psoDesc.PS.pShaderBytecode = ps->GetBufferPointer();
-	psoDesc.PS.BytecodeLength = ps->GetBufferSize();
-	psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
-	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
-	psoDesc.BlendState.AlphaToCoverageEnable = FALSE;
-	psoDesc.BlendState.IndependentBlendEnable = FALSE;
+	psoDesc.InputLayout                                      = { inputDesc, _countof(inputDesc) };
+	psoDesc.pRootSignature                                   = mSkyBox.skyBoxSignature;
+	psoDesc.VS.pShaderBytecode                               = vs->GetBufferPointer();
+	psoDesc.VS.BytecodeLength                                = vs->GetBufferSize();
+	psoDesc.PS.pShaderBytecode                               = ps->GetBufferPointer();
+	psoDesc.PS.BytecodeLength                                = ps->GetBufferSize();
+	psoDesc.RasterizerState.FillMode                         = D3D12_FILL_MODE_SOLID;
+	psoDesc.RasterizerState.CullMode                         = D3D12_CULL_MODE_BACK;
+	psoDesc.BlendState.AlphaToCoverageEnable                 = FALSE;
+	psoDesc.BlendState.IndependentBlendEnable                = FALSE;
 	psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-	psoDesc.DepthStencilState.DepthEnable = TRUE;
-	psoDesc.DepthStencilState.StencilEnable = FALSE;
-	psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
-	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDesc.NumRenderTargets = 1;
-	psoDesc.SampleMask = UINT_MAX;
-	psoDesc.SampleDesc.Count = 1;
-	psoDesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	psoDesc.DepthStencilState.DepthEnable                    = TRUE;
+	psoDesc.DepthStencilState.StencilEnable                  = FALSE;
+	psoDesc.DepthStencilState.DepthFunc                      = D3D12_COMPARISON_FUNC_LESS;
+	psoDesc.PrimitiveTopologyType                            = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.NumRenderTargets                                 = 1;
+	psoDesc.SampleMask                                       = UINT_MAX;
+	psoDesc.SampleDesc.Count                                 = 1;
+	psoDesc.RTVFormats[0]                                    = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	psoDesc.DSVFormat                                        = psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mSkyBox.skyBoxPSORGB32)));
 
 	// 创建 Texture SRV
@@ -892,14 +1072,14 @@ void VegetationC1Demo::InitSkyBox()
 
 }
 
-void VegetationC1Demo::InitIBL()
+void VegetationC2Demo::InitIBL()
 {
 	// 创建 CS Signature
 	CD3DX12_DESCRIPTOR_RANGE1 ranges[4];
 	CD3DX12_ROOT_PARAMETER1 rootParams[4];
 	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
 	ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
-	ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);	
+	ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 	ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0);
 
 	rootParams[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_ALL);
@@ -920,8 +1100,8 @@ void VegetationC1Demo::InitIBL()
 		&pErrorBlob));
 	if (pErrorBlob)
 	{
-		
-		char* error = (char *)pErrorBlob->GetBufferPointer();
+
+		char* error = (char*)pErrorBlob->GetBufferPointer();
 		ErrorBox(error);
 	}
 	ThrowIfFailed(mDevice->CreateRootSignature(0,
@@ -935,7 +1115,7 @@ void VegetationC1Demo::InitIBL()
 
 
 	UINT compileFlags = 0;
-	
+
 	// 创建 PSO
 
 	// Diffuse Irradiance Map 部分
@@ -973,7 +1153,7 @@ void VegetationC1Demo::InitIBL()
 	envMap.cbIBLInfo = mUploadHeap->createResource(mDevice,
 		PADCB(sizeof(CBIBLInfo)),
 		CD3DX12_RESOURCE_DESC::Buffer(PADCB(sizeof(CBIBLInfo))));
-	
+
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 	cbvDesc.BufferLocation = envMap.cbIBLInfo->GetGPUVirtualAddress();
 	cbvDesc.SizeInBytes = PADCB(sizeof(CBIBLInfo));
@@ -990,13 +1170,13 @@ void VegetationC1Demo::InitIBL()
 	// 将 Envmap 状态切换至 NON_PIXEL_SHADER_RESOURCE
 	{
 		D3D12_RESOURCE_BARRIER barrier = {};
-		barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		barrier.Transition.pResource   = envMap.image;
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		barrier.Transition.pResource = envMap.image;
 		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-		barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-		
+
 		auto commandAllocator = mCommandAllocator[0];
 		ThrowIfFailed(commandAllocator->Reset());
 		ThrowIfFailed(mCommandList->Reset(commandAllocator, nullptr));
@@ -1008,7 +1188,7 @@ void VegetationC1Demo::InitIBL()
 		Flush(mCommandQueue, mFence, mFenceValue);
 	}
 
-	
+
 
 	// Diffuse Irradiance
 	ThrowIfFailed(mDevice->CreateCommittedResource(
@@ -1023,12 +1203,12 @@ void VegetationC1Demo::InitIBL()
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
 		nullptr,
 		IID_PPV_ARGS(&envMap.diffuseIrradianceMap)));
-	
+
 	D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-	uavDesc.Format                           = DXGI_FORMAT_R32G32B32A32_FLOAT;
-	uavDesc.ViewDimension                    = D3D12_UAV_DIMENSION_TEXTURE2D;
-	uavDesc.Texture2D.MipSlice               = 0;
-	uavDesc.Texture2D.PlaneSlice             = 0;
+	uavDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+	uavDesc.Texture2D.MipSlice = 0;
+	uavDesc.Texture2D.PlaneSlice = 0;
 	envMap.diffuseIrradianceMapUAVIndex = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	mDescriptorHeap->AddUAV(&envMap.diffuseIrradianceMapUAVIndex, envMap.diffuseIrradianceMap, uavDesc);
 
@@ -1045,11 +1225,11 @@ void VegetationC1Demo::InitIBL()
 			1, IrradianceSpecularPrefilterMipmapCount,
 			1, 0,
 			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
-		D3D12_RESOURCE_STATE_UNORDERED_ACCESS ,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
 		nullptr,
 		IID_PPV_ARGS(&envMap.specularPrefilterMap)));
 
-	
+
 
 	static int sampleCounts[] = { 1024,2048,2048,4096,8192 };
 	for (int mip = 0; mip < IrradianceSpecularPrefilterMipmapCount; ++mip)
@@ -1084,14 +1264,14 @@ void VegetationC1Demo::InitIBL()
 		IID_PPV_ARGS(&envMap.specularBSDFMap))
 	);
 
-	
+
 
 	uavDesc.Texture2D.MipSlice = 0;
 	envMap.specularBSDFMapUAVIndex = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	mDescriptorHeap->AddUAV(&envMap.specularBSDFMapUAVIndex, envMap.specularBSDFMap, uavDesc);
 
 	createSpecularBSDFMap(envMap.specularBSDFMapUAVIndex);
-	
+
 
 	// 创建统一的 SRV
 	{
@@ -1125,7 +1305,7 @@ void VegetationC1Demo::InitIBL()
 		b0.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 		b0.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 		b0.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-		
+
 		D3D12_RESOURCE_BARRIER b1 = {};
 		b1.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 		b1.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
@@ -1164,7 +1344,7 @@ void VegetationC1Demo::InitIBL()
 	}
 }
 
-void VegetationC1Demo::FPS()
+void VegetationC2Demo::FPS()
 {
 	// Code computes the average frames per second, and also the 
 	// average time it takes to render one frame.  These stats 
@@ -1196,7 +1376,7 @@ void VegetationC1Demo::FPS()
 	}
 }
 
-void VegetationC1Demo::RenderSkyBox()
+void VegetationC2Demo::RenderSkyBox()
 {
 	mCommandList->SetGraphicsRootSignature(mSkyBox.skyBoxSignature);
 
@@ -1219,11 +1399,64 @@ void VegetationC1Demo::RenderSkyBox()
 	mCommandList->DrawIndexedInstanced(mSkyBox.skyBoxMesh->submeshs[0].indices.size(), 1, 0, 0, 0);
 }
 
-void VegetationC1Demo::createSkyBoxAndIBL(const std::string & envMapName)
+void VegetationC2Demo::RenderTerrain()
+{
+	mCommandList->SetGraphicsRootSignature(mTerrainSignature);
+	mCommandList->SetPipelineState(mPSOTerrainRGBA32);
+	ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV),
+	mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) };
+	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+	auto& frameResource = mCPUFrameResource[mCurrentBackBufferIndex];
+
+	mCommandList->SetGraphicsRootConstantBufferView(0, frameResource->cbTerrainTrans->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootDescriptorTable(1,
+		mDescriptorHeap->GPUHandle(mTerrain->diffuseSRVIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(2,
+		mDescriptorHeap->GPUHandle(mSamplerIndices));
+
+
+
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	mCommandList->IASetVertexBuffers(0, 1, &mTerrain->vbView);
+	mCommandList->IASetIndexBuffer(&mTerrain->ibView);
+	//Draw Call！！！
+	mCommandList->DrawIndexedInstanced(mTerrain->mIndices.size(), 1, 0, 0, 0);
+}
+
+void VegetationC2Demo::RenderGrass()
+{
+	mCommandList->SetGraphicsRootSignature(mGrassSignature);
+	if (!mCullGrass)
+		mCommandList->SetPipelineState(mPSOGrassRGBA32);
+	else
+		mCommandList->SetPipelineState(mPSOGrassCullRGBA32);
+
+	ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV),
+	mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) };
+	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+	auto& frameResource = mCPUFrameResource[mCurrentBackBufferIndex];
+
+	mCommandList->SetGraphicsRootConstantBufferView(0, frameResource->cbGrassInfo->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootDescriptorTable(1,
+		mDescriptorHeap->GPUHandle(mGrass->diffuseAlphaIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(2,
+		mDescriptorHeap->GPUHandle(mSamplerIndices));
+
+
+
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_POINTLIST);
+	mCommandList->IASetVertexBuffers(0, 1, &mGrass->vbView);
+	//Draw Call！！！
+	mCommandList->DrawInstanced(mGrass->getGrassCount(), 1, 0, 0);
+}
+
+void VegetationC2Demo::createSkyBoxAndIBL(const std::string& envMapName)
 {
 }
 
-void VegetationC1Demo::createDiffuseIrradianceMap(DescriptorIndex & envMapSRV, DescriptorIndex & irrMapUAV)
+void VegetationC2Demo::createDiffuseIrradianceMap(DescriptorIndex& envMapSRV, DescriptorIndex& irrMapUAV)
 {
 	auto commandAllocator = mCommandAllocator[0];
 	ThrowIfFailed(commandAllocator->Reset());
@@ -1252,7 +1485,7 @@ void VegetationC1Demo::createDiffuseIrradianceMap(DescriptorIndex & envMapSRV, D
 
 }
 
-void VegetationC1Demo::createSpecularPrefilterEnvMap(DescriptorIndex & envMapSRV, DescriptorIndex & prefilterMapUAV, int thetaRes, int phiRes, int sampleCount, float roughness)
+void VegetationC2Demo::createSpecularPrefilterEnvMap(DescriptorIndex& envMapSRV, DescriptorIndex& prefilterMapUAV, int thetaRes, int phiRes, int sampleCount, float roughness)
 {
 	auto commandAllocator = mCommandAllocator[0];
 	ThrowIfFailed(commandAllocator->Reset());
@@ -1294,7 +1527,7 @@ void VegetationC1Demo::createSpecularPrefilterEnvMap(DescriptorIndex & envMapSRV
 	Flush(mCommandQueue, mFence, mFenceValue);
 }
 
-void VegetationC1Demo::createSpecularBSDFMap(DescriptorIndex & preBSDFMapUAV)
+void VegetationC2Demo::createSpecularBSDFMap(DescriptorIndex& preBSDFMapUAV)
 {
 	auto commandAllocator = mCommandAllocator[0];
 	ThrowIfFailed(commandAllocator->Reset());
