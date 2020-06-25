@@ -76,8 +76,15 @@ struct CBGrassInfo
 	XMFLOAT4	grassSize;
 	XMFLOAT4	windTime;
 	XMFLOAT4	maxDepth;
+//	XMFLOAT4	lodInfo[4];
 	XMFLOAT4X4	vp;
 };
 
+struct CBPerlinNoiseInfo
+{
+	XMFLOAT2	seeds;
+	int			iterations[2];
+	int			noiseMapAndLatticeRes[4];
+};
 
 

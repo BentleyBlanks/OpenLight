@@ -37,7 +37,8 @@ struct SkyBoxPSInput
 struct GrassGSInput
 {
     float3 positionW    :POSITION;
-    float2 sizeW        :TEXCOORD;
+    float2 texcoord     :TEXCOORD0;
+    float2 sizeW        :TEXCOORD1;
 };
 
 

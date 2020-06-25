@@ -290,16 +290,21 @@ void VegetationC2Demo::Init(HWND hWnd)
 	}
 	// Grass 根签名和 PSO
 	{
-		CD3DX12_ROOT_PARAMETER1 rootParameters[3];
-		CD3DX12_DESCRIPTOR_RANGE1 descRange[2];
+		CD3DX12_ROOT_PARAMETER1 rootParameters[5];
+		CD3DX12_DESCRIPTOR_RANGE1 descRange[4];
+		
 		descRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0);
 		descRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0);
+		descRange[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+		descRange[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0);
 		rootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_NONE, D3D12_SHADER_VISIBILITY_ALL);
-		rootParameters[1].InitAsDescriptorTable(1, &descRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
-		rootParameters[2].InitAsDescriptorTable(1, &descRange[1], D3D12_SHADER_VISIBILITY_PIXEL);
+		rootParameters[1].InitAsDescriptorTable(1, &descRange[2], D3D12_SHADER_VISIBILITY_GEOMETRY);
+		rootParameters[2].InitAsDescriptorTable(1, &descRange[3], D3D12_SHADER_VISIBILITY_GEOMETRY);
+		rootParameters[3].InitAsDescriptorTable(1, &descRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
+		rootParameters[4].InitAsDescriptorTable(1, &descRange[1], D3D12_SHADER_VISIBILITY_PIXEL);
 
 		rootSignatureDesc = {};
-		rootSignatureDesc.Init_1_1(3, rootParameters,
+		rootSignatureDesc.Init_1_1(5, rootParameters,
 			0, nullptr,
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 		// 创建根签名
@@ -326,7 +331,7 @@ void VegetationC2Demo::Init(HWND hWnd)
 		psoDesc.PS.BytecodeLength                = psGrass->GetBufferSize();
 		ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOGrassRGBA32)));
 		psoDesc.GS.pShaderBytecode               = gsGrassCull->GetBufferPointer();
-		psoDesc.GS.BytecodeLength                = gsGrassCull->GetBufferSize();
+		psoDesc.GS.BytecodeLength                = gsGrassCull->GetBufferSize(); 
 		ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOGrassCullRGBA32)));
 	}
 
@@ -353,15 +358,21 @@ void VegetationC2Demo::Init(HWND hWnd)
 	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 	mSamplerIndices = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 	mDescriptorHeap->AddSampler(&mSamplerIndices, samplerDesc);
+	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+	mSamPointIndex = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+	mDescriptorHeap->AddSampler(&mSamPointIndex, samplerDesc);
+
 
 
 	InitSkyBox();
 	InitPostprocess();
-	InitIBL();
+//	InitIBL();
 	ThrowIfFailed(mCommandAllocator[0]->Reset());
 	ThrowIfFailed(mCommandList->Reset(mCommandAllocator[0], nullptr));
 	mTerrain = std::shared_ptr<Terrain>(new Terrain(mDevice, mCommandList,mCommandQueue,mDescriptorHeap,"F:\\OpenLight\\Resource\\heightmap256.png", 20.f,1,1));
 	mGrass = std::shared_ptr<Grass>(new Grass(mDevice, mCommandAllocator[0], mCommandList, mCommandQueue, mDescriptorHeap,mTerrain.get()));
+	// seeds = (sin(t) * 0.5f + 0.5f,cos(t) *0.5f + 0.5f)
+	mPerlinNoise = std::shared_ptr<PerlinNoise2D>(new PerlinNoise2D(mDevice, 1024, 1024, 256, 256, 7, XMFLOAT2(0.25f,0.75f), mDescriptorHeap));
 	// 初始化材质和光源
 	{
 		mPointLights.lightPositions[0] = XMFLOAT4(50, 10, -20, 1.f);
@@ -404,6 +415,13 @@ void VegetationC2Demo::Render()
 
 	commandAllocator->Reset();
 	mCommandList->Reset(commandAllocator, nullptr);
+	static bool firstCreateNoise = true;
+	if ( firstCreateNoise)
+	{
+		mPerlinNoise->createPerlinNoise(mCommandList, mCPUFrameResource[mCurrentBackBufferIndex]->cbPerlinNoise);
+		mDeltaTime = 0.f;
+		firstCreateNoise = false;
+	}
 
 	// 切换 Scene Color 状态	
 	{
@@ -452,6 +470,7 @@ void VegetationC2Demo::Render()
 	// 渲染地面
 	RenderTerrain();
 	RenderGrass();
+	
 	if (mUseIBL)
 	{
 		mCommandList->SetGraphicsRootSignature(mIBLRootSignature);
@@ -592,12 +611,13 @@ void VegetationC2Demo::Update()
 	FPS();
 	mTimer.tick();
 	static float runTime = 0.f;
-
+	
 
 	// 相机更新
 	static float speed = 20.f;
 	float dt = mTimer.deltaTime();
 	runTime += dt;
+	mDeltaTime += dt;
 	if (GetAsyncKeyState('W') & 0x8000)
 		mCamera->walk(speed * dt);
 
@@ -664,6 +684,14 @@ void VegetationC2Demo::Update()
 	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->grassSize       = mGrass->grassInfo.grassSize;
 	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->windTime        = XMFLOAT4(runTime, runTime, runTime, runTime);
 	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->maxDepth        = mGrass->grassInfo.maxDepth;
+
+	mPerlinNoise->cbPerlinNoiseInfo.seeds = XMFLOAT2(std::sinf(runTime) * 0.5f + 0.5f, std::cosf(runTime) * 0.5f + 0.5f);
+	std::memcpy(mCPUFrameResource[mCurrentBackBufferIndex]->cbPerlinNoisePtr, &mPerlinNoise->cbPerlinNoiseInfo, sizeof(mPerlinNoise->cbPerlinNoiseInfo));
+	//for (int i = 0; i < 4; ++i)
+	//{
+	//	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->lodInfo[i] = mGrass->grassInfo.lodInfo[i];
+	//}
+
 	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->vp, XMMatrixTranspose(vp));
 
 	*(mCPUFrameResource[mCurrentBackBufferIndex]->cbMaterialPtr) = mPBRMeshs[0]->material;
@@ -737,6 +765,7 @@ void VegetationC2Demo::Update()
 					{
 						
 						ImGui::DragFloat2("GrassSize", (float*)(&mGrass->grassInfo.grassSize));
+						ImGui::DragFloat2("TexSpeed", (float*)(&mGrass->grassInfo.grassSize.z),0.01f,0.f,0.1f);
 						ImGui::DragFloat3("GrassMaxDepth", (float*)(&mGrass->grassInfo.maxDepth));
 						ImGui::Checkbox("Grass Cull", &mCullGrass);
 
@@ -1440,8 +1469,12 @@ void VegetationC2Demo::RenderGrass()
 
 	mCommandList->SetGraphicsRootConstantBufferView(0, frameResource->cbGrassInfo->GetGPUVirtualAddress());
 	mCommandList->SetGraphicsRootDescriptorTable(1,
-		mDescriptorHeap->GPUHandle(mGrass->diffuseAlphaIndex));
+		mDescriptorHeap->GPUHandle(mPerlinNoise->perlinNoiseSRVIndex));
 	mCommandList->SetGraphicsRootDescriptorTable(2,
+		mDescriptorHeap->GPUHandle(mSamPointIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(3,
+		mDescriptorHeap->GPUHandle(mGrass->diffuseAlphaIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(4,
 		mDescriptorHeap->GPUHandle(mSamplerIndices));
 
 

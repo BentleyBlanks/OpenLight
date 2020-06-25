@@ -243,6 +243,7 @@ Grass::Grass(ID3D12Device5* device,
         for (auto& p : terrain->mVertices)
         {
             v.position = p.position;
+            v.texcoord = p.texcoord;
  //           if(i % 8 == 0)
                 mGrassRoots.push_back(v);
             i++;
@@ -270,7 +271,7 @@ Grass::Grass(ID3D12Device5* device,
     vbView.SizeInBytes = mGrassRoots.size() * sizeof(StandardVertex);
     vbView.StrideInBytes = sizeof(StandardVertex);
      
-    grassInfo.grassSize = XMFLOAT4(0.5f, 5, 0, 0);
+    grassInfo.grassSize = XMFLOAT4(0.5f, 5, 0.05f, 0.05f);
     grassInfo.windTime = XMFLOAT4(0.f, 0.f, 0.f, 0.f);
     if (terrain)
     {
@@ -280,6 +281,9 @@ Grass::Grass(ID3D12Device5* device,
     {
         grassInfo.maxDepth = XMFLOAT4(1000, 1000, 1000, 1);
     }
+    //grassInfo.lodInfo[0] = XMFLOAT4(5, 1.f, 1.f,1.f);
+    //grassInfo.lodInfo[1] = XMFLOAT4(3, 1.667f, 1.667f, 1.f);
+    //grassInfo.lodInfo[2] = XMFLOAT4(1.f, 5.f, 5.f, 1.f);
 
     ThrowIfFailed(commandAllocator->Reset());
     ThrowIfFailed(commandList->Reset(commandAllocator, nullptr));

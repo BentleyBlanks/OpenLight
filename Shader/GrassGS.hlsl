@@ -9,7 +9,8 @@ cbuffer cbGrassInfo:register(b0)
     float4x4    vp;
 }
 
-
+Texture2D perlinNoiseMap :register(t0);
+SamplerState samPoint:register(s0);
 /*
     输入一颗草的中心点
     以该中心点开始构建面片
@@ -47,7 +48,7 @@ void GrassMainGS(point GrassGSInput gin[1],
     [unroll]
     for(int i=1;i<6;++i)
     {
-        float windOffset = sin(windTime.x + root.x);
+        float windOffset = sin(windTime.x );
         int baseIndex              = i * 2;
         v[baseIndex + 0].positionW = v[0].positionW + i * float3(0.f,halfSize.y,0.f);
         v[baseIndex + 0].positionW += right * 0.2f * i * windOffset;
@@ -99,22 +100,27 @@ void GrassCullMainGS(point GrassGSInput gin[1],
 
     int quadCount = 5;
     float windStride = 1;;
-    if (lookDist > lodDist * 0.2f)
+    if (lookDist > lodDist * 0.5f)
     {
         quadCount  = 1;
-        halfSize.y = halfSize.y * 5.f;
+        halfSize.y = halfSize.y * 3.f;
         texStride  = texStride * 5.f;
         windStride = 5.f;
     }
-    else if (lookDist > lodDist * 0.1f)
+    else if (lookDist > lodDist * 0.2f)
     {
         quadCount  = 3;
-        halfSize.y = halfSize.y * 1.667f;
+        halfSize.y = halfSize.y * 1.5f;
         texStride  = texStride * 1.667f;
         windStride = 1.667f;
     }
-
-
+//     quadCount  = 1;
+//    halfSize.y = halfSize.y * 5.f;
+//     texStride  = texStride * 5.f;
+//     windStride = 5.f;
+    float2 noise = perlinNoiseMap.SampleLevel(samPoint,gin[0].texcoord,0.f).xy;
+    noise = normalize(noise * 2.f - 1.f);
+    float3 windDir = float3(noise.x,0.f,noise.y);
     GrassGSOutput v[12];
     [unroll]
     for (int pi = 0; pi < 6; ++pi)
@@ -136,17 +142,18 @@ void GrassCullMainGS(point GrassGSInput gin[1],
     [unroll]
     for(int i=1;i<= quadCount;++i)
     {
-        float windOffset = sin(windTime.x + root.x);
+        float windOffset = sin(windTime.x );
+//        float windOffset = 1.f;
         int baseIndex              = i * 2;
         v[baseIndex + 0].positionW = v[0].positionW + i * float3(0.f,halfSize.y,0.f);
-        v[baseIndex + 0].positionW += right * 0.2f * i * windStride * windOffset;
+        v[baseIndex + 0].positionW += windDir * 0.2f * i * windStride * windOffset;
         v[baseIndex + 0].normalW   = look;
         v[baseIndex + 0].tangentW  = right;
         v[baseIndex + 0].texcoord  = v[0].texcoord + i * float2(0.f,texStride);
         v[baseIndex + 0].positionH = mul(float4(v[baseIndex + 0].positionW,1.f),vp);
 
         v[baseIndex + 1].positionW = v[1].positionW + i * float3(0.f,halfSize.y,0.f);
-        v[baseIndex + 1].positionW += right * 0.2f * i * windStride * windOffset;
+        v[baseIndex + 1].positionW += windDir * 0.2f * i * windStride * windOffset;
         v[baseIndex + 1].normalW   = look;
         v[baseIndex + 1].tangentW  = right;
         v[baseIndex + 1].texcoord  = v[1].texcoord + i * float2(0.f,texStride);

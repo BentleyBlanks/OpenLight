@@ -9,6 +9,7 @@
 #include "Structure/MeshPkg.h"
 #include "Structure/EnvironmenMap.h"
 #include "Structure/Terrain.h"
+#include "Structure/PerlinNoiseMap.h"
 using namespace OpenLight;
 
 
@@ -51,6 +52,10 @@ public:
 			PADCB(sizeof(CBGrassInfo)),
 			CD3DX12_RESOURCE_DESC::Buffer(PADCB(sizeof(CBGrassInfo))));
 
+		cbPerlinNoise = CPUResourceUploadHeap->createResource(device,
+			PADCB(sizeof(CBPerlinNoiseInfo)),
+			CD3DX12_RESOURCE_DESC::Buffer(PADCB(sizeof(CBPerlinNoiseInfo))));
+
 
 		ThrowIfFailed(cbTrans->Map(0, nullptr, reinterpret_cast<void**>(&cbTransPtr)));
 		ThrowIfFailed(cbCamera->Map(0, nullptr, reinterpret_cast<void**>(&cbCameraPtr)));
@@ -60,6 +65,7 @@ public:
 		ThrowIfFailed(cbTerrainTrans->Map(0, nullptr, reinterpret_cast<void**>(&cbTerrainTransPtr)));
 		ThrowIfFailed(cbTerrainMaterial->Map(0, nullptr, reinterpret_cast<void**>(&cbTerrainMaterialPtr)));
 		ThrowIfFailed(cbGrassInfo->Map(0, nullptr, reinterpret_cast<void**>(&cbGrassInfoPtr)));
+		ThrowIfFailed(cbPerlinNoise->Map(0, nullptr, reinterpret_cast<void**>(&cbPerlinNoisePtr)));
 
 		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 		cbvDesc.BufferLocation = cbSkyTrans->GetGPUVirtualAddress();
@@ -78,39 +84,44 @@ public:
 		ReleaseCom(cbTerrainTrans);
 		ReleaseCom(cbTerrainMaterial);
 		ReleaseCom(cbGrassInfo);
+		ReleaseCom(cbPerlinNoise);
 	}
 	// CBTrans
-	CBTrans* cbTransPtr               = nullptr;
-	ID3D12Resource* cbTrans           = nullptr;
+	CBTrans* cbTransPtr                 = nullptr;
+	ID3D12Resource* cbTrans             = nullptr;
 
 	// CBCamera
-	CBCamera* cbCameraPtr             = nullptr;
-	ID3D12Resource* cbCamera          = nullptr;
+	CBCamera* cbCameraPtr               = nullptr;
+	ID3D12Resource* cbCamera            = nullptr;
 
 	// CBMaterial
-	CBMaterial* cbMaterialPtr         = nullptr;
-	ID3D12Resource* cbMaterial        = nullptr;
+	CBMaterial* cbMaterialPtr           = nullptr;
+	ID3D12Resource* cbMaterial          = nullptr;
 
 	// CBPointLight
-	CBPointLights* cbPointLightsPtr   = nullptr;
-	ID3D12Resource* cbPointLights     = nullptr;
+	CBPointLights* cbPointLightsPtr     = nullptr;
+	ID3D12Resource* cbPointLights       = nullptr;
 
 	// SkyBox Trans
-	DescriptorIndex	cbSkyTransIndex   = {};
-	CBTrans* cbSkyTransPtr            = nullptr;
-	ID3D12Resource* cbSkyTrans        = nullptr;
+	DescriptorIndex	cbSkyTransIndex     = {};
+	CBTrans* cbSkyTransPtr              = nullptr;
+	ID3D12Resource* cbSkyTrans          = nullptr;
 
 	// Terrain Trans
-	CBTrans* cbTerrainTransPtr        = nullptr;
-	ID3D12Resource* cbTerrainTrans    = nullptr;
+	CBTrans* cbTerrainTransPtr          = nullptr;
+	ID3D12Resource* cbTerrainTrans      = nullptr;
 
 	// Terrain Material
-	CBMaterial* cbTerrainMaterialPtr  = nullptr;
-	ID3D12Resource* cbTerrainMaterial = nullptr;
+	CBMaterial* cbTerrainMaterialPtr    = nullptr;
+	ID3D12Resource* cbTerrainMaterial   = nullptr;
 
 	// Grass Info
-	CBGrassInfo* cbGrassInfoPtr       = nullptr;
-	ID3D12Resource* cbGrassInfo       = nullptr;
+	CBGrassInfo* cbGrassInfoPtr         = nullptr;
+	ID3D12Resource* cbGrassInfo         = nullptr;
+
+	// PerliNoise Info
+	CBPerlinNoiseInfo* cbPerlinNoisePtr = nullptr;
+	ID3D12Resource* cbPerlinNoise       = nullptr;
 
 };
 
@@ -160,6 +171,7 @@ protected:
 
 	// 纹理采样器
 	DescriptorIndex							mSamplerIndices = {};
+	DescriptorIndex							mSamPointIndex  = {};
 	// PBR 渲染 PSO
 	ID3D12PipelineState* mPSORGBA32                         = nullptr;
 	// PBR IBL 渲染 PSO
@@ -198,9 +210,9 @@ protected:
 	DescriptorIndex						mPostprocessSRVIndex[3];
 	DescriptorIndex						mPostprocessRTVIndex[3];
 	ID3D12RootSignature* mPostprocessSignature = nullptr;
-	ID3D12PipelineState* mPostprocessPSO = nullptr;
-	ID3D12Resource1* mQuadVB = nullptr;
-	ID3D12Resource1* mQuadIB = nullptr;
+	ID3D12PipelineState* mPostprocessPSO       = nullptr;
+	ID3D12Resource1* mQuadVB                   = nullptr;
+	ID3D12Resource1* mQuadIB                   = nullptr;
 	D3D12_VERTEX_BUFFER_VIEW			mQuadVBView;
 	D3D12_INDEX_BUFFER_VIEW				mQuadIBView;
 	ID3D12Resource1* mSceneColorBuffer[AppConfig::NumFrames];
@@ -216,18 +228,24 @@ protected:
 	Timer								mTimer;
 	// 点光源
 	CBPointLights						mPointLights;
-	int									mSelectedLightIndex = 0;
+	int									mSelectedLightIndex   = 0;
 
 	// 环境光 IBL
 	EnvironmentMap						mEnvironmentMap;
-	bool								mUseIBL = true;
+	bool								mUseIBL               = true;
 
 	// 地形
-	std::shared_ptr<Terrain>			mTerrain = nullptr;
-	std::shared_ptr<Grass>				mGrass = nullptr;
-	bool								mCullGrass = false;
+	std::shared_ptr<Terrain>			mTerrain              = nullptr;
+	std::shared_ptr<Grass>				mGrass                = nullptr;
+	bool								mCullGrass            = false;
+
+	// PerlinNoise
+	std::shared_ptr<PerlinNoise2D>		mPerlinNoise          = nullptr;
 
 	int									mSelectedFresnelIndex = 0;
-	bool								mOpenMSAA = false;
+	bool								mOpenMSAA             = false;
+
+
+	float								mDeltaTime            = 0.f;
 
 };

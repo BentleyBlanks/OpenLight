@@ -2,7 +2,7 @@
 #include "d3dx12.h"
 #include<iostream>
 
-#define DEFAULT_COMMON_SIZE 32
+#define DEFAULT_COMMON_SIZE 64
 #define DEFAULT_SAMPLER_SIZE 8
 
 OpenLight::GPUDescriptorHeapWrap::GPUDescriptorHeapWrap(ID3D12Device5* device)
