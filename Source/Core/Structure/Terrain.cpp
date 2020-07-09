@@ -271,8 +271,8 @@ Grass::Grass(ID3D12Device5* device,
     vbView.SizeInBytes = mGrassRoots.size() * sizeof(StandardVertex);
     vbView.StrideInBytes = sizeof(StandardVertex);
      
-    grassInfo.grassSize = XMFLOAT4(0.5f, 5, 0.05f, 0.05f);
-    grassInfo.windTime = XMFLOAT4(0.f, 0.f, 0.f, 0.f);
+    grassInfo.grassSize = XMFLOAT4(0.5f, 5.f, 0.2f, 0.f);
+    grassInfo.windTime = XMFLOAT4(0.f, 1.f,0.f, 0.1f);
     if (terrain)
     {
         grassInfo.maxDepth = XMFLOAT4(terrain->aabb.Extent(0), terrain->aabb.Extent(1), terrain->aabb.Extent(2), 1);

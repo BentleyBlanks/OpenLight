@@ -73,7 +73,17 @@ struct CBIBLInfo
 struct CBGrassInfo
 {
 	XMFLOAT4	cameraPositionW;
+	/*
+		xy	: grassSize
+		z	: wind amplitude
+	*/
 	XMFLOAT4	grassSize;
+	
+	/*
+		x	: runTime
+		yz	: direction of wind
+		w	: speed     of wind
+	*/
 	XMFLOAT4	windTime;
 	XMFLOAT4	maxDepth;
 //	XMFLOAT4	lodInfo[4];

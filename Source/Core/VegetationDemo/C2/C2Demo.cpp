@@ -343,23 +343,26 @@ void VegetationC2Demo::Init(HWND hWnd)
 
 	// 创建 Sampler
 	D3D12_SAMPLER_DESC samplerDesc = {  };
-	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-	samplerDesc.MinLOD = -D3D12_FLOAT32_MAX;
-	samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-	samplerDesc.MipLODBias = 0.0f;
-	samplerDesc.MaxAnisotropy = 1;
-	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
-	samplerDesc.BorderColor[0] = 1.0f;
-	samplerDesc.BorderColor[1] = 0.0f;
-	samplerDesc.BorderColor[2] = 1.0f;
-	samplerDesc.BorderColor[3] = 1.0f;
-	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	mSamplerIndices = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+	samplerDesc.Filter             = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	samplerDesc.MinLOD             = -D3D12_FLOAT32_MAX;
+	samplerDesc.MaxLOD             = D3D12_FLOAT32_MAX;
+	samplerDesc.MipLODBias         = 0.0f;
+	samplerDesc.MaxAnisotropy      = 1;
+	samplerDesc.ComparisonFunc     = D3D12_COMPARISON_FUNC_NEVER;
+	samplerDesc.BorderColor[0]     = 1.0f;
+	samplerDesc.BorderColor[1]     = 0.0f;
+	samplerDesc.BorderColor[2]     = 1.0f;
+	samplerDesc.BorderColor[3]     = 1.0f;
+	samplerDesc.AddressU           = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.AddressV           = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	samplerDesc.AddressW           = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	mSamplerIndices                = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 	mDescriptorHeap->AddSampler(&mSamplerIndices, samplerDesc);
-	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
-	mSamPointIndex = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+	samplerDesc.AddressU           = D3D12_TEXTURE_ADDRESS_MODE_MIRROR;
+	samplerDesc.AddressV           = D3D12_TEXTURE_ADDRESS_MODE_MIRROR;
+	samplerDesc.AddressW           = D3D12_TEXTURE_ADDRESS_MODE_MIRROR;
+	samplerDesc.Filter             = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	mSamPointIndex                 = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 	mDescriptorHeap->AddSampler(&mSamPointIndex, samplerDesc);
 
 
@@ -372,7 +375,7 @@ void VegetationC2Demo::Init(HWND hWnd)
 	mTerrain = std::shared_ptr<Terrain>(new Terrain(mDevice, mCommandList,mCommandQueue,mDescriptorHeap,"F:\\OpenLight\\Resource\\heightmap256.png", 20.f,1,1));
 	mGrass = std::shared_ptr<Grass>(new Grass(mDevice, mCommandAllocator[0], mCommandList, mCommandQueue, mDescriptorHeap,mTerrain.get()));
 	// seeds = (sin(t) * 0.5f + 0.5f,cos(t) *0.5f + 0.5f)
-	mPerlinNoise = std::shared_ptr<PerlinNoise2D>(new PerlinNoise2D(mDevice, 1024, 1024, 256, 256, 7, XMFLOAT2(0.25f,0.75f), mDescriptorHeap));
+	mPerlinNoise = std::shared_ptr<PerlinNoise2D>(new PerlinNoise2D(mDevice, 1024, 1024, 256, 256, 5, XMFLOAT2(0.25f,0.75f), mDescriptorHeap));
 	// 初始化材质和光源
 	{
 		mPointLights.lightPositions[0] = XMFLOAT4(50, 10, -20, 1.f);
@@ -680,9 +683,11 @@ void VegetationC2Demo::Update()
 	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbTerrainTransPtr->world, XMMatrixTranspose(world));
 	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbTerrainTransPtr->invTranspose, XMMatrixTranspose(world));
 	
-	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->cameraPositionW = XMFLOAT4(cameraPos.x, cameraPos.y, cameraPos.z, 1.f);
+	mGrass->grassInfo.cameraPositionW                                           = XMFLOAT4(cameraPos.x, cameraPos.y, cameraPos.z, 1.f);;
+	mGrass->grassInfo.windTime.x                                                = runTime;
+	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->cameraPositionW = mGrass->grassInfo.cameraPositionW;
 	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->grassSize       = mGrass->grassInfo.grassSize;
-	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->windTime        = XMFLOAT4(runTime, runTime, runTime, runTime);
+	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->windTime        = mGrass->grassInfo.windTime;
 	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->maxDepth        = mGrass->grassInfo.maxDepth;
 
 	mPerlinNoise->cbPerlinNoiseInfo.seeds = XMFLOAT2(std::sinf(runTime) * 0.5f + 0.5f, std::cosf(runTime) * 0.5f + 0.5f);
@@ -765,7 +770,9 @@ void VegetationC2Demo::Update()
 					{
 						
 						ImGui::DragFloat2("GrassSize", (float*)(&mGrass->grassInfo.grassSize));
-						ImGui::DragFloat2("TexSpeed", (float*)(&mGrass->grassInfo.grassSize.z),0.01f,0.f,0.1f);
+						ImGui::DragFloat2("Wind Direction", (float*)(&mGrass->grassInfo.windTime.y), 0.01f, -1.f, 1.f);
+						ImGui::DragFloat("Wind Amplitude", (float*)(&mGrass->grassInfo.grassSize.z), 0.01f);
+						ImGui::DragFloat("Wind Speed", (float*)(&mGrass->grassInfo.windTime.w), 0.01f, 0.f);
 						ImGui::DragFloat3("GrassMaxDepth", (float*)(&mGrass->grassInfo.maxDepth));
 						ImGui::Checkbox("Grass Cull", &mCullGrass);
 
