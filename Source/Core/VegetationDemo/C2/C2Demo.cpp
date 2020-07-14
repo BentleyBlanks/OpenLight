@@ -40,6 +40,8 @@ VegetationC2Demo::~VegetationC2Demo()
 	ReleaseCom(mPSOGrassRGBA32);
 	ReleaseCom(mPSOGrassCullRGBA32);
 	ReleaseCom(mGrassSignature);
+	ReleaseCom(mDummyRootSignature);
+	ReleaseCom(mDummyPSO);
 
 
 	for (int i = 0; i < AppConfig::NumFrames; ++i)
@@ -115,6 +117,72 @@ void VegetationC2Demo::Init(HWND hWnd)
 
 	}
 	mPBRMeshs.push_back(bunny);
+	
+	// Dummy Motor Model
+	{
+		mMotorMesh = std::shared_ptr<MeshPkg>(new MeshPkg);
+		mMotorMesh->mesh = ObjMeshLoader::loadObjMeshFromFile("F:\\OpenLight\\Sphere.obj");
+		XMStoreFloat4x4(&mMotorMesh->world, XMMatrixIdentity());
+		UINT verticesSizeInBytes = mMotorMesh->mesh->submeshs[0].vertices.size() * sizeof(StandardVertex);
+		UINT indicesSizeInBytes = mMotorMesh->mesh->submeshs[0].indices.size() * sizeof(UINT);
+		mMotorMesh->vb = mUploadHeap->createResource(mDevice,
+			verticesSizeInBytes,
+			CD3DX12_RESOURCE_DESC::Buffer(verticesSizeInBytes));
+		mMotorMesh->ib = mUploadHeap->createResource(mDevice,
+			indicesSizeInBytes,
+			CD3DX12_RESOURCE_DESC::Buffer(indicesSizeInBytes));
+
+		void* p = nullptr;
+		CD3DX12_RANGE readRange(0, 0);
+		ThrowIfFailed(mMotorMesh->vb->Map(0, &readRange, &p));
+		std::memcpy(p, &mMotorMesh->mesh->submeshs[0].vertices[0], verticesSizeInBytes);
+		mMotorMesh->vb->Unmap(0,nullptr);
+
+		ThrowIfFailed(mMotorMesh->ib->Map(0, &readRange, &p));
+		std::memcpy(p, &mMotorMesh->mesh->submeshs[0].indices[0], indicesSizeInBytes);
+		mMotorMesh->ib->Unmap(0, nullptr);
+
+		mMotorMesh->vbView.BufferLocation = mMotorMesh->vb->GetGPUVirtualAddress();
+		mMotorMesh->vbView.SizeInBytes = verticesSizeInBytes;
+		mMotorMesh->vbView.StrideInBytes = sizeof(StandardVertex);
+
+		mMotorMesh->ibView.BufferLocation = mMotorMesh->ib->GetGPUVirtualAddress();
+		mMotorMesh->ibView.SizeInBytes = indicesSizeInBytes;
+		mMotorMesh->ibView.Format = DXGI_FORMAT_R32_UINT;
+	}
+	// Dummy Wind Volume 
+	{
+		mWindVolumeMesh = std::shared_ptr<MeshPkg>(new MeshPkg);
+		mWindVolumeMesh->mesh = ObjMeshLoader::loadObjMeshFromFile("F:\\OpenLight\\Resource\\UnitCube.obj");
+		XMStoreFloat4x4(&mWindVolumeMesh->world, XMMatrixScaling(64,32,64));
+		UINT verticesSizeInBytes = mWindVolumeMesh->mesh->submeshs[0].vertices.size() * sizeof(StandardVertex);
+		UINT indicesSizeInBytes = mWindVolumeMesh->mesh->submeshs[0].indices.size() * sizeof(UINT);
+		mWindVolumeMesh->vb = mUploadHeap->createResource(mDevice,
+			verticesSizeInBytes,
+			CD3DX12_RESOURCE_DESC::Buffer(verticesSizeInBytes));
+		mWindVolumeMesh->ib = mUploadHeap->createResource(mDevice,
+			indicesSizeInBytes,
+			CD3DX12_RESOURCE_DESC::Buffer(indicesSizeInBytes));
+
+		void* p = nullptr;
+		CD3DX12_RANGE readRange(0, 0);
+		ThrowIfFailed(mWindVolumeMesh->vb->Map(0, &readRange, &p));
+		std::memcpy(p, &mWindVolumeMesh->mesh->submeshs[0].vertices[0], verticesSizeInBytes);
+		mWindVolumeMesh->vb->Unmap(0, nullptr);
+
+		ThrowIfFailed(mWindVolumeMesh->ib->Map(0, &readRange, &p));
+		std::memcpy(p, &mWindVolumeMesh->mesh->submeshs[0].indices[0], indicesSizeInBytes);
+		mWindVolumeMesh->ib->Unmap(0, nullptr);
+
+		mWindVolumeMesh->vbView.BufferLocation = mWindVolumeMesh->vb->GetGPUVirtualAddress();
+		mWindVolumeMesh->vbView.SizeInBytes = verticesSizeInBytes;
+		mWindVolumeMesh->vbView.StrideInBytes = sizeof(StandardVertex);
+
+		mWindVolumeMesh->ibView.BufferLocation = mWindVolumeMesh->ib->GetGPUVirtualAddress();
+		mWindVolumeMesh->ibView.SizeInBytes = indicesSizeInBytes;
+		mWindVolumeMesh->ibView.Format = DXGI_FORMAT_R32_UINT;
+	}
+
 
 	// 创建 CPUFrameResource
 	for (int i = 0; i < AppConfig::NumFrames; ++i)
@@ -132,9 +200,14 @@ void VegetationC2Demo::Init(HWND hWnd)
 	WRL::ComPtr<ID3DBlob> vsTerrain   = nullptr;
 	WRL::ComPtr<ID3DBlob> psTerrain   = nullptr;
 	WRL::ComPtr<ID3DBlob> vsGrass     = nullptr;
+	std::vector<BYTE>	  vsGrassBin;
 	WRL::ComPtr<ID3DBlob> gsGrass     = nullptr;
 	WRL::ComPtr<ID3DBlob> gsGrassCull = nullptr;
 	WRL::ComPtr<ID3DBlob> psGrass     = nullptr;
+	std::vector<BYTE>	  psGrassBin;
+
+	std::vector<BYTE>	  vsDummy;
+	std::vector<BYTE>	  psDummy;
 #if defined(_DEBUG)		
 	UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #else
@@ -158,6 +231,8 @@ void VegetationC2Demo::Init(HWND hWnd)
 
 	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\GrassVS.hlsl",
 		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "GrassMainVS", "vs_5_0", compileFlags, 0, &vsGrass, nullptr));
+	auto vsGrassLength = vsGrass->GetBufferSize();
+	vsGrassBin = RawMemoryParser::readData("F:\\OpenLight\\ShaderBin\\GrassVS.cso");
 
 	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\GrassGS.hlsl",
 		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "GrassMainGS", "gs_5_0", compileFlags, 0, &gsGrass, nullptr));
@@ -167,7 +242,11 @@ void VegetationC2Demo::Init(HWND hWnd)
 
 	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\GrassPS.hlsl",
 		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "GrassMainPS", "ps_5_0", compileFlags, 0, &psGrass, nullptr));
+	auto psGrassLength = psGrass->GetBufferSize();
+	psGrassBin = RawMemoryParser::readData("F:\\OpenLight\\ShaderBin\\GrassPS.cso");
 
+	vsDummy = RawMemoryParser::readData("F:\\OpenLight\\ShaderBin\\DummyVS.cso");
+	psDummy = RawMemoryParser::readData("F:\\OpenLight\\ShaderBin\\DummyPS.cso");
 
 	// 创建根签名参数
 	CD3DX12_ROOT_PARAMETER1 rootParameters[6];
@@ -288,6 +367,36 @@ void VegetationC2Demo::Init(HWND hWnd)
 		ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOTerrainRGBA32)));
 
 	}
+
+	// Dummy 根签名和 PSO
+	{
+		CD3DX12_ROOT_PARAMETER1 params[1];
+		params[0].InitAsConstantBufferView(0);
+		rootSignatureDesc = {};
+		rootSignatureDesc.Init_1_1(1, params,
+			0, nullptr,
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		// 创建根签名
+		ThrowIfFailed(D3DX12SerializeVersionedRootSignature(
+			&rootSignatureDesc,
+			D3D_ROOT_SIGNATURE_VERSION_1_1,
+			&pSignatureBlob,
+			&pErrorBlob));
+		ThrowIfFailed(mDevice->CreateRootSignature(0,
+			pSignatureBlob->GetBufferPointer(),
+			pSignatureBlob->GetBufferSize(),
+			IID_PPV_ARGS(&mDummyRootSignature)));
+
+		psoDesc.pRootSignature = mDummyRootSignature;
+		psoDesc.VS.pShaderBytecode = &vsDummy[0];
+		psoDesc.VS.BytecodeLength = vsDummy.size();
+		psoDesc.PS.pShaderBytecode = &psDummy[0];
+		psoDesc.PS.BytecodeLength = psDummy.size();
+		psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+		psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+		ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mDummyPSO)));
+	}
+
 	// Grass 根签名和 PSO
 	{
 		CD3DX12_ROOT_PARAMETER1 rootParameters[5];
@@ -319,21 +428,29 @@ void VegetationC2Demo::Init(HWND hWnd)
 			IID_PPV_ARGS(&mGrassSignature)));
 
 		psoDesc.pRootSignature = mGrassSignature;
-		psoDesc.PrimitiveTopologyType            = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
-//		psoDesc.RasterizerState.FillMode		 = D3D12_FILL_MODE_WIREFRAME;
-		psoDesc.RasterizerState.CullMode		 = D3D12_CULL_MODE_NONE;
-		psoDesc.BlendState.AlphaToCoverageEnable = true;
-		psoDesc.VS.pShaderBytecode               = vsGrass->GetBufferPointer();
-		psoDesc.VS.BytecodeLength                = vsGrass->GetBufferSize();
-		psoDesc.GS.pShaderBytecode               = gsGrass->GetBufferPointer();
-		psoDesc.GS.BytecodeLength                = gsGrass->GetBufferSize();
-		psoDesc.PS.pShaderBytecode               = psGrass->GetBufferPointer();
-		psoDesc.PS.BytecodeLength                = psGrass->GetBufferSize();
+		psoDesc.PrimitiveTopologyType              = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+//		psoDesc.RasterizerState.FillMode		   = D3D12_FILL_MODE_WIREFRAME;
+		psoDesc.RasterizerState.CullMode		   = D3D12_CULL_MODE_NONE;
+		psoDesc.BlendState.AlphaToCoverageEnable   = true;
+
+		//psoDesc.VS.pShaderBytecode               = vsGrass->GetBufferPointer();
+		//psoDesc.VS.BytecodeLength                = vsGrass->GetBufferSize();
+		psoDesc.VS.pShaderBytecode                 = &vsGrassBin[0];
+		psoDesc.VS.BytecodeLength                  = vsGrassBin.size();
+
+		psoDesc.GS.pShaderBytecode                 = gsGrass->GetBufferPointer();
+		psoDesc.GS.BytecodeLength                  = gsGrass->GetBufferSize();
+		//psoDesc.PS.pShaderBytecode               = psGrass->GetBufferPointer();
+		//psoDesc.PS.BytecodeLength                = psGrass->GetBufferSize();
+		psoDesc.PS.pShaderBytecode                 = &psGrassBin[0];
+		psoDesc.PS.BytecodeLength                  = psGrassBin.size();
 		ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOGrassRGBA32)));
-		psoDesc.GS.pShaderBytecode               = gsGrassCull->GetBufferPointer();
-		psoDesc.GS.BytecodeLength                = gsGrassCull->GetBufferSize(); 
+		psoDesc.GS.pShaderBytecode                 = gsGrassCull->GetBufferPointer();
+		psoDesc.GS.BytecodeLength                  = gsGrassCull->GetBufferSize(); 
 		ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOGrassCullRGBA32)));
 	}
+
+
 
 	mViewport = { 0.0f, 0.0f
 		, static_cast<float>(AppConfig::ClientWidth), static_cast<float>(AppConfig::ClientHeight), D3D12_MIN_DEPTH, D3D12_MAX_DEPTH };
@@ -472,7 +589,10 @@ void VegetationC2Demo::Render()
 	RenderSkyBox();
 	// 渲染地面
 	RenderTerrain();
-	RenderGrass();
+//	RenderGrass();
+
+	// 渲染 Dummy
+	RenderDummy();
 	
 	if (mUseIBL)
 	{
@@ -697,10 +817,28 @@ void VegetationC2Demo::Update()
 	//	mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->lodInfo[i] = mGrass->grassInfo.lodInfo[i];
 	//}
 
-	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->vp, XMMatrixTranspose(vp));
+	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbGrassInfoPtr->vp, DirectX::XMMatrixTranspose(vp));
 
 	*(mCPUFrameResource[mCurrentBackBufferIndex]->cbMaterialPtr) = mPBRMeshs[0]->material;
 	*(mCPUFrameResource[mCurrentBackBufferIndex]->cbPointLightsPtr) = mPointLights;
+
+	{
+		auto R = DirectX::XMMatrixRotationY(0.618f * runTime);
+		auto T = DirectX::XMMatrixTranslation(26, 0, 0);
+		auto S = DirectX::XMMatrixScaling(0.1f, 0.1f, 0.1f);
+		XMMATRIX world = S * T * R * DirectX::XMMatrixTranslation(32,16,32);
+		XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbDummyMotorMeshTransPtr->world, DirectX::XMMatrixTranspose(world));
+		XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbDummyMotorMeshTransPtr->wvp, XMMatrixTranspose(world * vp));
+		XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbDummyMotorMeshTransPtr->invTranspose, XMMatrixTranspose(world));
+		
+	}
+	{
+		XMMATRIX world = DirectX::XMLoadFloat4x4(&mWindVolumeMesh->world);
+		XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbDummyWindVolumeMeshTransPtr->world, DirectX::XMMatrixTranspose(world));
+		XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbDummyWindVolumeMeshTransPtr->wvp, XMMatrixTranspose(world * vp));
+		XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbDummyWindVolumeMeshTransPtr->invTranspose, XMMatrixTranspose(world));
+	}
+
 	// GUI
 	{
 		ImGui_ImplDX12_NewFrame();
@@ -1490,6 +1628,29 @@ void VegetationC2Demo::RenderGrass()
 	mCommandList->IASetVertexBuffers(0, 1, &mGrass->vbView);
 	//Draw Call！！！
 	mCommandList->DrawInstanced(mGrass->getGrassCount(), 1, 0, 0);
+}
+
+void VegetationC2Demo::RenderDummy()
+{
+	mCommandList->SetGraphicsRootSignature(mDummyRootSignature);
+	mCommandList->SetPipelineState(mDummyPSO);
+	//ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV),
+	//mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) };
+	//mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+	auto& frameResource = mCPUFrameResource[mCurrentBackBufferIndex];
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	// Draw MotorMesh
+	mCommandList->SetGraphicsRootConstantBufferView(0, frameResource->cbDummyMotorMeshTrans->GetGPUVirtualAddress());
+	mCommandList->IASetVertexBuffers(0, 1, &mMotorMesh->vbView);
+	mCommandList->IASetIndexBuffer(&mMotorMesh->ibView);
+	mCommandList->DrawIndexedInstanced(mMotorMesh->mesh->submeshs[0].indices.size(), 1, 0, 0, 0);
+	// Draw WindVolume
+	mCommandList->SetGraphicsRootConstantBufferView(0, frameResource->cbDummyWindVolumeMeshTrans->GetGPUVirtualAddress());
+	mCommandList->IASetVertexBuffers(0, 1, &mWindVolumeMesh->vbView);
+	mCommandList->IASetIndexBuffer(&mWindVolumeMesh->ibView);
+	mCommandList->DrawIndexedInstanced(mWindVolumeMesh->mesh->submeshs[0].indices.size(), 1, 0, 0, 0);
 }
 
 void VegetationC2Demo::createSkyBoxAndIBL(const std::string& envMapName)

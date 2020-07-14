@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <DirectXMath.h>
 #include <sstream>
+#include <fstream>
+#include <cstddef>
+#include <vector>
 #define D3D_HLSL_DEFUALT_INCLUDE ((ID3DInclude*)(UINT_PTR)1)
 #define PAD(x,y)		((x+ (y-1) )&(~(y-1)))
 #define PADCB(x)		PAD(x,256)
@@ -78,3 +81,20 @@ inline XMFLOAT2 operator-(const XMFLOAT2& v1, const XMFLOAT2& v2)
 	return XMFLOAT2(v1.x - v2.x,
 		v1.y - v2.y);
 }
+
+class RawMemoryParser
+{
+public:
+	static std::vector<BYTE> readData(const std::string& file)
+	{
+		std::ifstream fin;
+		fin.open(file, std::ios_base::binary);
+		assert(!fin.fail());
+		fin.seekg(0, std::ios::end);
+		std::vector<BYTE> data(fin.tellg());
+		fin.seekg(std::ios::beg);
+		fin.read(reinterpret_cast<char*>(&data[0]), data.size());
+		fin.close();
+		return data;
+	}
+};

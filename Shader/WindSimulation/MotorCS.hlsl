@@ -14,7 +14,7 @@ void applyDirectionalMotor(in float3 cellPosW,in DirectionalMotor motor,in float
     inout float3 velocityW)    
 {
     float3 dir = cellPosW - motor.motorPosAndRadiusSqr.xyz;
-    float3 dist2 = dir.x * dir.x + dir.y * dir.y + dir.z * dir.z;
+    float dist2 = dir.x * dir.x + dir.y * dir.y + dir.z * dir.z;
     
     if(dist2 < motor.motorPosAndRadiusSqr.w)
     {
@@ -35,8 +35,20 @@ cbuffer cbWindVolumeInfo:register(b1)
 {
     // 风场的起始位置
     // xyz: 起始位置
-    // w  : \Delta_t 
-    float4 windVolumePosAndDt;
+    float4 windVolumePos;
+    
+    // diff
+    float diff;
+    
+    // wind volume scale
+    float volumeScale;
+
+    // reciprocal of wind volume scale
+    float invVolumeScale;
+
+    // \Delta_t
+    float deltaT;
+
 }
 
 /*
@@ -44,12 +56,12 @@ cbuffer cbWindVolumeInfo:register(b1)
 */
 RWTexture3D<float3> windVolume:register(u0);
 [numthreads(8,4,8)]
-void UpdateWindVolumeCSMain(
+void ApplyMotorsCSMain(
     int3 dispatchThreadID:SV_DispatchThreadID
 )
 {
-    float3 cellPosW = windVolumePosAndDt.xyz + float3(dispatchThreadID.x,dispatchThreadID.y,dispatchThreadID.z);
+    float3 cellPosW = windVolumePos.xyz + float3(dispatchThreadID.x,dispatchThreadID.y,dispatchThreadID.z) * volumeScale;
     float3 velocityW = windVolume[dispatchThreadID];
-    applyDirectionalMotor(cellPosW,directionalMotors[0],windVolumePosAndDt.w,velocityW);
+    applyDirectionalMotor(cellPosW,directionalMotors[0],deltaT,velocityW);
     windVolume[dispatchThreadID] = velocityW;
 }

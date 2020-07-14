@@ -80,7 +80,7 @@ namespace OpenLight
 		{
 			if (mUploadOffsetInBytes + sizeInBytes >= mUploadCapacityInBytes)
 			{
-
+				assert(false);
 				return nullptr;
 			}
 
