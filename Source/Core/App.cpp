@@ -7,8 +7,8 @@
 
 #include "AppConfig.h"
 #include "Renderer.h"
-#include "VegetationDemo/C1/C1Demo.h"
-#include "VegetationDemo/C2/C2Demo.h"
+#include "VegetationDemo/C1Demo.h"
+#include "VegetationDemo/C2Demo.h"
 #include "Window.h"
 #include "App.h"
 
