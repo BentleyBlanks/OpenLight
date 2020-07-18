@@ -15,7 +15,8 @@ constexpr size_t Logical_Unknown = 2;
 */
 struct PhysicalDesc
 {
-	size_t desc;
+	CD3DX12_RESOURCE_DESC desc;
+	D3D12_CLEAR_VALUE	  initialiValue;
 };
 
 /*
@@ -28,6 +29,8 @@ public:
 	std::string  name;
 	size_t		 resource;
 	PhysicalDesc physicalDesc;
+
+	
 
 	// implicit or explicit
 
