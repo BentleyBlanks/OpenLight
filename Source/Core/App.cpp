@@ -80,6 +80,8 @@ LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lPara
 	return ::DefWindowProcW(hWnd , message , wParam , lParam);
 }
 
+
+
 void App::Init(HINSTANCE hInstance)
 {
 	window   = new Window(hInstance , L"OpenLight" , WndProc);

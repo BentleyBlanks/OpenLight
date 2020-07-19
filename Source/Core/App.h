@@ -2,7 +2,7 @@
 #include "Timer.h"
 class Window;
 class Renderer;
-
+#define MacroGetDevice() App::GetInstance().GetRenderer()->GetDevice()
 class App
 {
 public:

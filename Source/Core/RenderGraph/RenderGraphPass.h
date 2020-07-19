@@ -16,10 +16,12 @@ class RenderGraph;
 
 
 class GraphCompiler;
+class GraphExecutor;
 class RenderGraphPass
 {
 	friend RenderGraph;
 	friend GraphCompiler;
+	friend GraphExecutor;
 public:
 	RenderGraphPass(const RenderPassID& passID) { mPassID = passID; }
 	RenderGraphPass(const RenderPassID& passID, const std::function<void(const RenderGraphPass*)>& setupFunc, const std::function<void(const RenderGraphPass*)>& executeFunc)
@@ -77,6 +79,7 @@ public:
 			just need to store desc
 		*/
 		mDescriptorDescs.push_back(desc);
+		mDescriptorResources.push_back(DescriptorResource());
 		for (const auto& logicalID : logicalResources)
 		{
 			mLogical2Descriptor[logicalID] = descriptorID;
@@ -104,7 +107,7 @@ protected:
 	std::unordered_map<LogicalResourceID, DescriptorResourceID> mLogical2Descriptor;
 	// Descriptor Resource
 	std::vector<DescriptorDesc>			mDescriptorDescs;
-
+	std::vector<DescriptorResource>		mDescriptorResources;
 
 	RenderPassID						mPassID;
 	std::string							mPassName;

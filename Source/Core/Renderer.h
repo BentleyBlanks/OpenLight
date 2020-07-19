@@ -40,6 +40,8 @@ public:
 	virtual void Flush(ID3D12CommandQueue* commandQueue, ID3D12Fence* Fence, uint64_t& FenceValue, HANDLE FenceEvent);
 	virtual void Flush(ID3D12CommandQueue* commandQueue, ID3D12Fence* Fence, uint64_t& FenceValue);
 	virtual void renderGUI();
+
+	auto GetDevice() const { return mDevice; }
 protected:
 
 

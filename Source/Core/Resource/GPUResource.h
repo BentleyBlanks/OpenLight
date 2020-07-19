@@ -8,6 +8,8 @@
 #include<array>
 #include<unordered_set>
 #include <wrl.h>
+
+#include "App.h"
 using namespace Microsoft;
 namespace OpenLight
 {
@@ -102,6 +104,48 @@ namespace OpenLight
 		UINT							mUploadOffsetInBytes;
 	};
 	
+	class GPUDynamicDescriptorHeapWrap
+	{
+	public:
+		static GPUDynamicDescriptorHeapWrap* GetInstance();
+
+		GPUDynamicDescriptorHeapWrap(ID3D12Device5* device);
+
+		// CBV SRV UAV
+		std::pair<CD3DX12_GPU_DESCRIPTOR_HANDLE,CD3DX12_CPU_DESCRIPTOR_HANDLE> 
+			AllocateGPU(UINT size);
+
+		// RTV DSV
+		CD3DX12_CPU_DESCRIPTOR_HANDLE AllocateRTV(UINT size);
+		CD3DX12_CPU_DESCRIPTOR_HANDLE AllocateDSV(UINT size);
+
+		ID3D12DescriptorHeap* GetGPUDescriptorHeap() {
+			return nullptr;
+		}
+		ID3D12DescriptorHeap* GetRTVDescriptorHeap() {
+			return nullptr;
+		}
+		ID3D12DescriptorHeap* GetDSVDescriptorHeap()
+		{
+			return nullptr;
+		}
+
+		void Reset() {
+			mOffsets[0] = 0;
+			mOffsets[1] = 0;
+			mOffsets[2] = 0;
+		}
+	protected:
+		ID3D12DescriptorHeap* mGPUDescriptorHeap = nullptr;
+		ID3D12DescriptorHeap* mRTVDescriptorHeap = nullptr;
+		ID3D12DescriptorHeap* mDSVDescriptorHeap = nullptr;
+
+		// 0: GPU
+		// 1: RTV
+		// 2: DSV
+		std::array<UINT, 3>		mOffsets;
+		ID3D12Device5* mDevice = nullptr;
+	};
 }
 
 #if 0

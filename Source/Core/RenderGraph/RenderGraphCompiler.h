@@ -32,7 +32,7 @@ struct GraphCompiledResult
 	}dag;
 
 	std::unordered_map<LogicalResourceID, LogicalResourceCompiledInfo>	logicalResourceCompiledInfos;
-	std::unordered_map<RenderPassID, RenderPassCompiledInfo>					renderPassCompiledInfos;
+	std::unordered_map<RenderPassID, RenderPassCompiledInfo>			renderPassCompiledInfos;
 
 	// Toposort Resource
 	std::vector<RenderPassID>													sortedPass;
@@ -70,5 +70,9 @@ public:
 		return &exe;
 	}
 
-	virtual void Execute(const GraphCompiledResult& compiledResult);
+	virtual void Execute(GraphCompiledResult& compiledResult);
+
+protected:
+	virtual void ConstructResource(const RenderPassID& renderPassID, GraphCompiledResult& compiledInfo);
+	virtual void DestroyResource(const RenderPassID& renderPassID, GraphCompiledResult& compiledInfo);
 };

@@ -2,6 +2,7 @@
 #include "d3dx12.h"
 #include<iostream>
 
+#include"Renderer.h"
 #define DEFAULT_COMMON_SIZE 64
 #define DEFAULT_SAMPLER_SIZE 8
 
@@ -205,3 +206,69 @@ bool OpenLight::GPUUploadHeapWrap::createResource(ID3D12Device5 * device, UINT s
 	mUploadOffsetInBytes = PAD(mUploadOffsetInBytes + sizeInBytes, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
 	return true;
 }
+
+OpenLight::GPUDynamicDescriptorHeapWrap* OpenLight::GPUDynamicDescriptorHeapWrap::GetInstance()
+{
+	auto device = MacroGetDevice();
+	static GPUDynamicDescriptorHeapWrap heap(device);
+	return &heap;
+}
+
+OpenLight::GPUDynamicDescriptorHeapWrap::GPUDynamicDescriptorHeapWrap(ID3D12Device5* device):mDevice(device)
+{
+	D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+
+	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	desc.NumDescriptors = DEFAULT_COMMON_SIZE;
+	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	desc.NodeMask = 0;
+	ThrowIfFailed(mDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&mGPUDescriptorHeap)));
+	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	ThrowIfFailed(mDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&mRTVDescriptorHeap)));
+	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	ThrowIfFailed(mDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&mDSVDescriptorHeap)));
+
+	mOffsets[0] = 0;
+	mOffsets[1] = 0;
+	mOffsets[2] = 0;
+}
+
+std::pair<CD3DX12_GPU_DESCRIPTOR_HANDLE, CD3DX12_CPU_DESCRIPTOR_HANDLE> OpenLight::GPUDynamicDescriptorHeapWrap::AllocateGPU(UINT size)
+{
+	assert(mOffsets[0] + size < DEFAULT_COMMON_SIZE);
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mGPUDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+		mOffsets[0],
+		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mGPUDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+		mOffsets[0],
+		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
+
+	mOffsets[0] += size;
+	return std::pair<CD3DX12_GPU_DESCRIPTOR_HANDLE, CD3DX12_CPU_DESCRIPTOR_HANDLE>(gpuHandle, cpuHandle);
+	
+
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE OpenLight::GPUDynamicDescriptorHeapWrap::AllocateRTV(UINT size)
+{
+	assert(mOffsets[1] + size < DEFAULT_COMMON_SIZE);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mGPUDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+		mOffsets[1],
+		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
+	mOffsets[1] += size;
+	return cpuHandle;
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE OpenLight::GPUDynamicDescriptorHeapWrap::AllocateDSV(UINT size)
+{
+	assert(mOffsets[2] + size < DEFAULT_COMMON_SIZE);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mGPUDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+		mOffsets[2],
+		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
+	mOffsets[2] += size;
+	return cpuHandle;
+}
+
+
