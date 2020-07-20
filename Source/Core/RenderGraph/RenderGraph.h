@@ -27,11 +27,11 @@ public:
 	RenderPassID CreateGraphNode(NodeArgs&&... args)
 	{
 		auto id = mNodeGraphs.size();
-		RenderGraphPass* node = new RenderGraphPass(std::forward<NodeArgs>(args);
+		RenderGraphPass* node = new RenderGraphPass(std::forward<NodeArgs>(args));
 		node->mRootGraph = this;
 		mGraphNodes.push_back(node);
 		mPassMap[id] = node;
-		return static_cast<PassID>(id);
+		return static_cast<RenderPassID>(id);
 	}
 
 

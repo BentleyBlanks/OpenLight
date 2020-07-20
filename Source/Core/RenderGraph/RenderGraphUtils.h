@@ -5,81 +5,23 @@
 #include<variant>
 
 #include<assert.h>
-struct RenderPassID
+
+
+using RenderPassID = int;
+using LogicalResourceID = int;
+using PhysicalResourceID = int;
+using DescriptorResourceID = int;
+
+
+__forceinline bool IsValidID(int id)
 {
-	RenderPassID() {}
-	explicit RenderPassID(int _id) :id(_id) {}
-	explicit RenderPassID(size_t _id) : id(_id) {}
+	return id >= 0;
+}
 
-	bool operator==(const RenderPassID& rhs) const
-	{
-		return id == rhs.id;
-	}
-
-	bool IsValid() const {
-		return id >= 0;
-	}
-	
-protected:
-	int id = -1;
-};
-
-struct LogicalResourceID
+__forceinline int InvalidID()
 {
-	LogicalResourceID() {}
-	explicit LogicalResourceID(int _id) :id(_id) {}
-	explicit LogicalResourceID(size_t _id) : id(_id) {}
-
-	bool operator==(const LogicalResourceID& rhs) const
-	{
-		return id == rhs.id;
-	}
-
-	bool IsValid() const {
-		return id >= 0;
-	}
-
-protected:
-	int id = -1;
-};
-
-struct PhysicalResourceID
-{
-	PhysicalResourceID() {}
-	explicit PhysicalResourceID(int _id) :id(_id) {}
-	explicit PhysicalResourceID(size_t _id) : id(_id) {}
-
-	bool operator==(const PhysicalResourceID& rhs) const
-	{
-		return id == rhs.id;
-	}
-
-	bool IsValid() const {
-		return id >= 0;
-	}
-
-protected:
-	int id = -1;
-};
-
-struct DescriptorResourceID
-{
-	DescriptorResourceID() {}
-	explicit DescriptorResourceID(int _id) :id(_id) {}
-	explicit DescriptorResourceID(size_t _id) : id(_id) {}
-
-	bool operator==(const DescriptorResourceID& rhs) const
-	{
-		return id == rhs.id;
-	}
-
-	bool IsValid() const {
-		return id >= 0;
-	}
-
-protected:
-	int id = -1;
-};
+	return -1;
+}
 
 using D3DViewDesc = std::variant<
 	D3D12_CONSTANT_BUFFER_VIEW_DESC,

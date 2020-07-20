@@ -46,7 +46,7 @@ GraphCompiledResult GraphCompiler::Compile(RenderGraph& graph) const
 		auto& info = resInfo.second;
 		info.start = orders.size();
 		info.end = 0;
-		if (!info.writer.IsValid())
+		if (IsValidID(info.writer))
 		{
 			info.start = orders[info.writer];
 			info.end = orders[info.writer];
@@ -163,12 +163,12 @@ void GraphExecutor::ConstructResource(const RenderPassID& renderPassID, GraphCom
 
 		if (logicalResource->type == ELogical_Explicit)
 		{
-			assert(logicalResource->physicalResourceID.IsValid());
+			assert(IsValidID(logicalResource->physicalResourceID));
 		}
 		else
 		{
 			logicalResource->physicalResourceID = resourceMgr->ConstructPhysicalResource(logicalResource->physicalDesc);
-			assert(logicalResource->physicalResourceID.IsValid());
+			assert(IsValidID(logicalResource->physicalResourceID));
 		}
 	}
 
@@ -189,41 +189,50 @@ void GraphExecutor::ConstructResource(const RenderPassID& renderPassID, GraphCom
 			switch (d3dDesc.index())
 			{
 			case 0:
+			{
 				// D3D12_CONSTANT_BUFFER_VIEW_DESC
 				auto cbvDesc = std::get<0>(d3dDesc);
 				cbvDesc.BufferLocation = physicalResource->resource->GetGPUVirtualAddress();
 				device->CreateConstantBufferView(&cbvDesc, cpuHandle);
 				cpuHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 				break;
+			}
 			case 1:
+			{
 				// D3D12_SHADER_RESOURCE_VIEW_DESC
-				auto & srvDesc = std::get<1>(d3dDesc);
+				auto& srvDesc = std::get<1>(d3dDesc);
 				device->CreateShaderResourceView(physicalResource->resource,
 					&srvDesc, cpuHandle);
 				cpuHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 				break;
+			}
 			case 2:
+			{
 				// D3D12_UNORDERED_ACCESS_VIEW_DESC
-				auto & uavDesc = std::get<2>(d3dDesc);
-				device->CreateUnorderedAccessView(physicalResource->resource,nullptr,
+				auto& uavDesc = std::get<2>(d3dDesc);
+				device->CreateUnorderedAccessView(physicalResource->resource, nullptr,
 					&uavDesc, cpuHandle);
 				cpuHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 				break;
+			}
 			case 3:
+			{
 				// D3D12_RENDER_TARGET_VIEW_DESC
-				auto & rtvDesc = std::get<3>(d3dDesc);
+				auto& rtvDesc = std::get<3>(d3dDesc);
 				device->CreateRenderTargetView(physicalResource->resource,
 					&rtvDesc, cpuHandle);
 				cpuHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
 				break;
+			}
 			case 4:
+			{
 				// D3D12_DEPTH_STENCIL_VIEW_DESC
-				auto & dsvDesc = std::get<4>(d3dDesc);
+				auto& dsvDesc = std::get<4>(d3dDesc);
 				device->CreateDepthStencilView(physicalResource->resource,
 					&dsvDesc, cpuHandle);
 				cpuHandle.Offset(device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
 				break;
-
+			}
 			default:
 				assert(false);
 				break;
