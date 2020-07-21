@@ -26,13 +26,6 @@ public:
 			PADCB(sizeof(CBCamera)),
 			CD3DX12_RESOURCE_DESC::Buffer(PADCB(sizeof(CBCamera))));
 
-		cbMaterial = CPUResourceUploadHeap->createResource(device,
-			PADCB(sizeof(CBMaterial)),
-			CD3DX12_RESOURCE_DESC::Buffer(PADCB(sizeof(CBMaterial))));
-
-		cbPointLights = CPUResourceUploadHeap->createResource(device,
-			PADCB(sizeof(CBPointLights)),
-			CD3DX12_RESOURCE_DESC::Buffer(PADCB(sizeof(CBPointLights))));
 
 		cbSkyTrans = CPUResourceUploadHeap->createResource(device,
 			PADCB(sizeof(CBTrans)),
@@ -46,33 +39,14 @@ public:
 			PADCB(sizeof(CBMaterial)),
 			CD3DX12_RESOURCE_DESC::Buffer(PADCB(sizeof(CBMaterial))));
 
-		cbGrassInfo = CPUResourceUploadHeap->createResource(device,
-			PADCB(sizeof(CBGrassInfo)),
-			CD3DX12_RESOURCE_DESC::Buffer(PADCB(sizeof(CBGrassInfo))));
-
-		cbPerlinNoise = CPUResourceUploadHeap->createResource(device,
-			PADCB(sizeof(CBPerlinNoiseInfo)),
-			CD3DX12_RESOURCE_DESC::Buffer(PADCB(sizeof(CBPerlinNoiseInfo))));
-
-		cbDummyMotorMeshTrans = CPUResourceUploadHeap->createResource(device,
-			PADCB(sizeof(CBTrans)),
-			CD3DX12_RESOURCE_DESC::Buffer(PADCB(sizeof(CBTrans))));
-		cbDummyWindVolumeMeshTrans = CPUResourceUploadHeap->createResource(device,
-			PADCB(sizeof(CBTrans)),
-			CD3DX12_RESOURCE_DESC::Buffer(PADCB(sizeof(CBTrans))));
 
 
 		ThrowIfFailed(cbTrans->Map(0, nullptr, reinterpret_cast<void**>(&cbTransPtr)));
 		ThrowIfFailed(cbCamera->Map(0, nullptr, reinterpret_cast<void**>(&cbCameraPtr)));
-		ThrowIfFailed(cbMaterial->Map(0, nullptr, reinterpret_cast<void**>(&cbMaterialPtr)));
-		ThrowIfFailed(cbPointLights->Map(0, nullptr, reinterpret_cast<void**>(&cbPointLightsPtr)));
+
 		ThrowIfFailed(cbSkyTrans->Map(0, nullptr, reinterpret_cast<void**>(&cbSkyTransPtr)));
 		ThrowIfFailed(cbTerrainTrans->Map(0, nullptr, reinterpret_cast<void**>(&cbTerrainTransPtr)));
 		ThrowIfFailed(cbTerrainMaterial->Map(0, nullptr, reinterpret_cast<void**>(&cbTerrainMaterialPtr)));
-		ThrowIfFailed(cbGrassInfo->Map(0, nullptr, reinterpret_cast<void**>(&cbGrassInfoPtr)));
-		ThrowIfFailed(cbPerlinNoise->Map(0, nullptr, reinterpret_cast<void**>(&cbPerlinNoisePtr)));
-		ThrowIfFailed(cbDummyMotorMeshTrans->Map(0, nullptr, reinterpret_cast<void**>(&cbDummyMotorMeshTransPtr)));
-		ThrowIfFailed(cbDummyWindVolumeMeshTrans->Map(0, nullptr, reinterpret_cast<void**>(&cbDummyWindVolumeMeshTransPtr)));
 
 		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 		cbvDesc.BufferLocation = cbSkyTrans->GetGPUVirtualAddress();
@@ -85,15 +59,9 @@ public:
 	{
 		ReleaseCom(cbTrans);
 		ReleaseCom(cbCamera);
-		ReleaseCom(cbMaterial);
-		ReleaseCom(cbPointLights);
 		ReleaseCom(cbSkyTrans);
 		ReleaseCom(cbTerrainTrans);
 		ReleaseCom(cbTerrainMaterial);
-		ReleaseCom(cbGrassInfo);
-		ReleaseCom(cbPerlinNoise);
-		ReleaseCom(cbDummyMotorMeshTrans);
-		ReleaseCom(cbDummyWindVolumeMeshTrans);
 	}
 	// CBTrans
 	CBTrans* cbTransPtr = nullptr;
@@ -103,13 +71,6 @@ public:
 	CBCamera* cbCameraPtr = nullptr;
 	ID3D12Resource* cbCamera = nullptr;
 
-	// CBMaterial
-	CBMaterial* cbMaterialPtr = nullptr;
-	ID3D12Resource* cbMaterial = nullptr;
-
-	// CBPointLight
-	CBPointLights* cbPointLightsPtr = nullptr;
-	ID3D12Resource* cbPointLights = nullptr;
 
 	// SkyBox Trans
 	DescriptorIndex	cbSkyTransIndex = {};
@@ -124,19 +85,6 @@ public:
 	CBMaterial* cbTerrainMaterialPtr = nullptr;
 	ID3D12Resource* cbTerrainMaterial = nullptr;
 
-	// Grass Info
-	CBGrassInfo* cbGrassInfoPtr = nullptr;
-	ID3D12Resource* cbGrassInfo = nullptr;
-
-	// PerliNoise Info
-	CBPerlinNoiseInfo* cbPerlinNoisePtr = nullptr;
-	ID3D12Resource* cbPerlinNoise = nullptr;
-
-	CBTrans* cbDummyMotorMeshTransPtr = nullptr;
-	ID3D12Resource* cbDummyMotorMeshTrans = nullptr;
-
-	CBTrans* cbDummyWindVolumeMeshTransPtr = nullptr;
-	ID3D12Resource* cbDummyWindVolumeMeshTrans = nullptr;
 
 };
 
@@ -155,46 +103,32 @@ protected:
 	void Update();
 	void InitPostprocess();
 	void InitSkyBox();
-	void InitIBL();
 	void FPS();
 	void RenderSkyBox();
 	void RenderTerrain();
-	void RenderGrass();
 	void RenderDummy();
 
-	void createSkyBoxAndIBL(const std::string& envMapName);
+	void GBuffer();
+	void Lighting();
 
-	// 创建 Diffuse Irradiance Map
-	void createDiffuseIrradianceMap(
-		DescriptorIndex& envMapSRV,
-		DescriptorIndex& irrMapUAV);
 
-	// 创建 Specular Prefilter Environment Map
-	void createSpecularPrefilterEnvMap(
-		DescriptorIndex& envMapSRV,
-		DescriptorIndex& prefilterMapUAV,
-		int thetaRes,
-		int phiRes,
-		int sampleCount,
-		float roughness);
-
-	// 创建 Specular BSDF Map
-	void createSpecularBSDFMap(
-		DescriptorIndex& preBSDFMapUAV);
 
 	// Construct GBuffer Root Signature
-	ID3D12RootSignature*					mConstructGBufferRootSignature    = nullptr;
+	ID3D12RootSignature*					mConstructGBufferRootSignature      = nullptr;
 	// Construct GBuffer PSO
 	ID3D12PipelineState*					mConstructGBufferPSO		        = nullptr;
 	// DeferredLighting Root Signature
-	ID3D12RootSignature* mDeferredLightingRootSignature = nullptr;
+	ID3D12RootSignature* mDeferredLightingRootSignature                         = nullptr;
 	// DeferredLighting PSO
-	ID3D12PipelineState* mDeferredLightingPSO = nullptr;
+	ID3D12PipelineState* mDeferredLightingPSO                                   = nullptr;
 	// Terrain GBuffer Root Signature
-	ID3D12RootSignature* mConstructGBufferTerrainRootSignature = nullptr;
+	ID3D12RootSignature* mConstructGBufferTerrainRootSignature                  = nullptr;
 	// Terrain GBuffer PSO
-	ID3D12PipelineState* mConstructGBufferTerrainPSO = nullptr;
-	// 
+	ID3D12PipelineState* mConstructGBufferTerrainPSO                            = nullptr;
+	// Depth Pass Root Signature
+	ID3D12RootSignature* mDepthPassRootSignature                                = nullptr;
+	// Depth Pass PSO
+	ID3D12PipelineState* mDepthPassRootPSO                                      = nullptr;
 
 
 	// 纹理采样器
@@ -250,16 +184,9 @@ protected:
 
 	// 地形
 	std::shared_ptr<Terrain>			mTerrain = nullptr;
-	std::shared_ptr<Grass>				mGrass = nullptr;
-	bool								mCullGrass = false;
 
 
 	float								mDeltaTime = 0.f;
 
-	// Dummy Mesh
-	std::shared_ptr<MeshPkg>			mMotorMesh = nullptr;
-	std::shared_ptr<MeshPkg>			mWindVolumeMesh = nullptr;
-	ID3D12RootSignature* mDummyRootSignature = nullptr;
-	ID3D12PipelineState* mDummyPSO = nullptr;
 
 };

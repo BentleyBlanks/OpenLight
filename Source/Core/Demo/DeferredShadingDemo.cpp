@@ -27,16 +27,19 @@ DeferredShadingDemo::DeferredShadingDemo()
 
 DeferredShadingDemo::~DeferredShadingDemo()
 {
-	ReleaseCom(mRootSignature);
-	ReleaseCom(mPSORGBA32);
+	ReleaseCom(mConstructGBufferRootSignature);
+	ReleaseCom(mConstructGBufferPSO);
+	ReleaseCom(mDeferredLightingRootSignature);
+	ReleaseCom(mDeferredLightingPSO);
+	ReleaseCom(mConstructGBufferTerrainRootSignature);
+	ReleaseCom(mConstructGBufferTerrainPSO);
+	ReleaseCom(mDepthPassRootSignature);
+	ReleaseCom(mDepthPassRootPSO);
+
 	ReleaseCom(mPostprocessSignature);
 	ReleaseCom(mPostprocessPSO);
 	ReleaseCom(mQuadVB);
 	ReleaseCom(mQuadIB);
-	ReleaseCom(mPSOTerrainRGBA32);
-	ReleaseCom(mTerrainSignature);
-	ReleaseCom(mDummyRootSignature);
-	ReleaseCom(mDummyPSO);
 
 
 	for (int i = 0; i < AppConfig::NumFrames; ++i)
@@ -113,76 +116,12 @@ void DeferredShadingDemo::Init(HWND hWnd)
 	}
 	mPBRMeshs.push_back(bunny);
 
-	// Dummy Motor Model
-	{
-		mMotorMesh = std::shared_ptr<MeshPkg>(new MeshPkg);
-		mMotorMesh->mesh = ObjMeshLoader::loadObjMeshFromFile("F:\\OpenLight\\Sphere.obj");
-		XMStoreFloat4x4(&mMotorMesh->world, XMMatrixIdentity());
-		UINT verticesSizeInBytes = mMotorMesh->mesh->submeshs[0].vertices.size() * sizeof(StandardVertex);
-		UINT indicesSizeInBytes = mMotorMesh->mesh->submeshs[0].indices.size() * sizeof(UINT);
-		mMotorMesh->vb = mUploadHeap->createResource(mDevice,
-			verticesSizeInBytes,
-			CD3DX12_RESOURCE_DESC::Buffer(verticesSizeInBytes));
-		mMotorMesh->ib = mUploadHeap->createResource(mDevice,
-			indicesSizeInBytes,
-			CD3DX12_RESOURCE_DESC::Buffer(indicesSizeInBytes));
-
-		void* p = nullptr;
-		CD3DX12_RANGE readRange(0, 0);
-		ThrowIfFailed(mMotorMesh->vb->Map(0, &readRange, &p));
-		std::memcpy(p, &mMotorMesh->mesh->submeshs[0].vertices[0], verticesSizeInBytes);
-		mMotorMesh->vb->Unmap(0, nullptr);
-
-		ThrowIfFailed(mMotorMesh->ib->Map(0, &readRange, &p));
-		std::memcpy(p, &mMotorMesh->mesh->submeshs[0].indices[0], indicesSizeInBytes);
-		mMotorMesh->ib->Unmap(0, nullptr);
-
-		mMotorMesh->vbView.BufferLocation = mMotorMesh->vb->GetGPUVirtualAddress();
-		mMotorMesh->vbView.SizeInBytes = verticesSizeInBytes;
-		mMotorMesh->vbView.StrideInBytes = sizeof(StandardVertex);
-
-		mMotorMesh->ibView.BufferLocation = mMotorMesh->ib->GetGPUVirtualAddress();
-		mMotorMesh->ibView.SizeInBytes = indicesSizeInBytes;
-		mMotorMesh->ibView.Format = DXGI_FORMAT_R32_UINT;
-	}
-	// Dummy Wind Volume 
-	{
-		mWindVolumeMesh = std::shared_ptr<MeshPkg>(new MeshPkg);
-		mWindVolumeMesh->mesh = ObjMeshLoader::loadObjMeshFromFile("F:\\OpenLight\\Resource\\UnitCube.obj");
-		XMStoreFloat4x4(&mWindVolumeMesh->world, XMMatrixScaling(64, 32, 64));
-		UINT verticesSizeInBytes = mWindVolumeMesh->mesh->submeshs[0].vertices.size() * sizeof(StandardVertex);
-		UINT indicesSizeInBytes = mWindVolumeMesh->mesh->submeshs[0].indices.size() * sizeof(UINT);
-		mWindVolumeMesh->vb = mUploadHeap->createResource(mDevice,
-			verticesSizeInBytes,
-			CD3DX12_RESOURCE_DESC::Buffer(verticesSizeInBytes));
-		mWindVolumeMesh->ib = mUploadHeap->createResource(mDevice,
-			indicesSizeInBytes,
-			CD3DX12_RESOURCE_DESC::Buffer(indicesSizeInBytes));
-
-		void* p = nullptr;
-		CD3DX12_RANGE readRange(0, 0);
-		ThrowIfFailed(mWindVolumeMesh->vb->Map(0, &readRange, &p));
-		std::memcpy(p, &mWindVolumeMesh->mesh->submeshs[0].vertices[0], verticesSizeInBytes);
-		mWindVolumeMesh->vb->Unmap(0, nullptr);
-
-		ThrowIfFailed(mWindVolumeMesh->ib->Map(0, &readRange, &p));
-		std::memcpy(p, &mWindVolumeMesh->mesh->submeshs[0].indices[0], indicesSizeInBytes);
-		mWindVolumeMesh->ib->Unmap(0, nullptr);
-
-		mWindVolumeMesh->vbView.BufferLocation = mWindVolumeMesh->vb->GetGPUVirtualAddress();
-		mWindVolumeMesh->vbView.SizeInBytes = verticesSizeInBytes;
-		mWindVolumeMesh->vbView.StrideInBytes = sizeof(StandardVertex);
-
-		mWindVolumeMesh->ibView.BufferLocation = mWindVolumeMesh->ib->GetGPUVirtualAddress();
-		mWindVolumeMesh->ibView.SizeInBytes = indicesSizeInBytes;
-		mWindVolumeMesh->ibView.Format = DXGI_FORMAT_R32_UINT;
-	}
 
 
 	// 创建 CPUFrameResource
 	for (int i = 0; i < AppConfig::NumFrames; ++i)
 	{
-		mCPUFrameResource.push_back(std::make_unique<VegetationC2FrameResource>(mDevice, mCommandAllocator[i], mDescriptorHeap));
+		mCPUFrameResource.push_back(std::make_unique<DeferredShadingFrameResource>(mDevice, mCommandAllocator[i], mDescriptorHeap));
 	}
 
 
@@ -224,24 +163,7 @@ void DeferredShadingDemo::Init(HWND hWnd)
 	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\TerrainPS.hlsl",
 		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "TerrainMainPS", "ps_5_0", compileFlags, 0, &psTerrain, nullptr));
 
-	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\GrassVS.hlsl",
-		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "GrassMainVS", "vs_5_0", compileFlags, 0, &vsGrass, nullptr));
-	auto vsGrassLength = vsGrass->GetBufferSize();
-	vsGrassBin = RawMemoryParser::readData("F:\\OpenLight\\ShaderBin\\GrassVS.cso");
 
-	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\GrassGS.hlsl",
-		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "GrassMainGS", "gs_5_0", compileFlags, 0, &gsGrass, nullptr));
-
-	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\GrassGS.hlsl",
-		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "GrassCullMainGS", "gs_5_0", compileFlags, 0, &gsGrassCull, nullptr));
-
-	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\GrassPS.hlsl",
-		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "GrassMainPS", "ps_5_0", compileFlags, 0, &psGrass, nullptr));
-	auto psGrassLength = psGrass->GetBufferSize();
-	psGrassBin = RawMemoryParser::readData("F:\\OpenLight\\ShaderBin\\GrassPS.cso");
-
-	vsDummy = RawMemoryParser::readData("F:\\OpenLight\\ShaderBin\\DummyVS.cso");
-	psDummy = RawMemoryParser::readData("F:\\OpenLight\\ShaderBin\\DummyPS.cso");
 
 	// 创建根签名参数
 	CD3DX12_ROOT_PARAMETER1 rootParameters[6];
@@ -1646,6 +1568,14 @@ void DeferredShadingDemo::RenderDummy()
 	mCommandList->IASetVertexBuffers(0, 1, &mWindVolumeMesh->vbView);
 	mCommandList->IASetIndexBuffer(&mWindVolumeMesh->ibView);
 	mCommandList->DrawIndexedInstanced(mWindVolumeMesh->mesh->submeshs[0].indices.size(), 1, 0, 0, 0);
+}
+
+void DeferredShadingDemo::GBuffer()
+{
+}
+
+void DeferredShadingDemo::Lighting()
+{
 }
 
 void DeferredShadingDemo::createSkyBoxAndIBL(const std::string& envMapName)
