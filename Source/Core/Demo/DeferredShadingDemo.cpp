@@ -494,6 +494,10 @@ void DeferredShadingDemo::Render()
 	rtv = mPostprocessRTVIndex[mCurrentBackBufferIndex].cpuHandle;
 
 
+	DepthPass();
+	GBuffer();
+	Lighting();
+
 
 
 	// 后处理
@@ -1104,10 +1108,100 @@ void DeferredShadingDemo::RenderSkyBox()
 	mCommandList->DrawIndexedInstanced(mSkyBox.skyBoxMesh->submeshs[0].indices.size(), 1, 0, 0, 0);
 }
 
-void DeferredShadingDemo::RenderTerrain()
+
+void DeferredShadingDemo::DepthPass()
+{
+	// Set RootSignature and PSO
+	mCommandList->SetGraphicsRootSignature(mDepthPassRootSignature);
+	mCommandList->SetPipelineState(mDepthPassPSO);
+
+	// Set Descriptor Heap
+	ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) };
+	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+	// 设置 DSV
+	mCommandList->OMSetRenderTargets(0, nullptr, FALSE, &mDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+
+	// 设置 CBV
+	auto& currentFrameResource = mCPUFrameResource[mCurrentBackBufferIndex];
+	mCommandList->SetGraphicsRootConstantBufferView(0, currentFrameResource->cbTrans->GetGPUVirtualAddress());
+
+	// IA Setups
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	mCommandList->IASetVertexBuffers(0, 1, &mPBRMeshs[0]->vbView);
+	mCommandList->IASetIndexBuffer(&mPBRMeshs[0]->ibView);
+
+	// Draw Call !!
+	mCommandList->DrawIndexedInstanced(mPBRMeshs[0]->mesh->submeshs[0].indices.size(), 1, 0, 0, 0);
+	
+}
+
+void DeferredShadingDemo::GBuffer()
+{
+	// Set RootSignature and PSO
+	mCommandList->SetGraphicsRootSignature(mConstructGBufferRootSignature);
+	mCommandList->SetPipelineState(mConstructGBufferPSO);
+
+	// Set Descriptor Heap
+	ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV), mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) };
+	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+	// Transition RTV State
+	{
+		D3D12_RESOURCE_BARRIER barriers[2];
+		barriers[0].Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barriers[0].Transition.pResource   = mGBuffer0;
+		barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		barriers[0].Transition.StateAfter  = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		barriers[0].Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+
+		barriers[1].Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barriers[1].Transition.pResource   = mGBuffer1;
+		barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		barriers[1].Transition.StateAfter  = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		barriers[1].Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+
+		mCommandList->ResourceBarrier(2, barriers);
+
+
+
+	}
+	// 设置 RTV DSV
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = { mGBuffer0Handle,mGBuffer1Handle };
+	mCommandList->OMSetRenderTargets(2, rtvs, FALSE, &mDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	FLOAT clearColor[] = { 0.f,0.f,0.f,1.f };
+	mCommandList->ClearRenderTargetView(rtvs[0], clearColor, 0, nullptr);	
+	mCommandList->ClearRenderTargetView(rtvs[1], clearColor, 0, nullptr);
+
+
+	auto& currentFrameResource = mCPUFrameResource[mCurrentBackBufferIndex];
+
+	// Set CBV SRV Sampler
+	mCommandList->SetGraphicsRootConstantBufferView(0, currentFrameResource->cbTrans->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootDescriptorTable(1, mDescriptorHeap->GPUHandle(m39DescriptorIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(1, mDescriptorHeap->GPUHandle(mSamplerIndices));
+
+	// IA Setups
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	mCommandList->IASetVertexBuffers(0, 1, &mPBRMeshs[0]->vbView);
+	mCommandList->IASetIndexBuffer(&mPBRMeshs[0]->ibView);
+
+	// Draw Call !!
+	mCommandList->DrawIndexedInstanced(mPBRMeshs[0]->mesh->submeshs[0].indices.size(), 1, 0, 0, 0);
+
+
+	// Terrain
+	GBufferTerrain();
+
+}
+
+void DeferredShadingDemo::GBufferTerrain()
 {
 	mCommandList->SetGraphicsRootSignature(mConstructGBufferTerrainRootSignature);
 	mCommandList->SetPipelineState(mConstructGBufferTerrainPSO);
+
 	ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV),
 	mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) };
 	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
@@ -1127,11 +1221,6 @@ void DeferredShadingDemo::RenderTerrain()
 	mCommandList->IASetIndexBuffer(&mTerrain->ibView);
 	//Draw Call！！！
 	mCommandList->DrawIndexedInstanced(mTerrain->mIndices.size(), 1, 0, 0, 0);
-}
-
-
-void DeferredShadingDemo::GBuffer()
-{
 }
 
 void DeferredShadingDemo::Lighting()

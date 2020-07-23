@@ -105,10 +105,10 @@ protected:
 	void InitSkyBox();
 	void FPS();
 	void RenderSkyBox();
-	void RenderTerrain();
-	void RenderDummy();
-
+	
+	void DepthPass();
 	void GBuffer();
+	void GBufferTerrain();
 	void Lighting();
 
 
@@ -132,26 +132,29 @@ protected:
 
 
 	// 纹理采样器
-	DescriptorIndex							mSamplerIndices   = {};
-	DescriptorIndex							mSamPointIndex    = {};
+	DescriptorIndex							mSamplerIndices    = {};
+	DescriptorIndex							mSamPointIndex     = {};
 
 	// PBR 渲染 物体
-	std::vector<std::shared_ptr<MeshPkg>>	mPBRMeshs         = {};
+	std::vector<std::shared_ptr<MeshPkg>>	mPBRMeshs          = {};
+	ID3D12Resource*							m39DiffuseMap	   = nullptr;
+	DescriptorIndex							m39DescriptorIndex = {};
 
-	D3D12_VIEWPORT							mViewport         = {};
-	D3D12_RECT								mScissorRect      = {};
+	D3D12_VIEWPORT							mViewport          = {};
+	D3D12_RECT								mScissorRect       = {};
 
 	// 渲染天空盒
-	SkyBox									mSkyBox           = {};
+	SkyBox									mSkyBox            = {};
 
 
 	// GBuffer 0 : diffuse color
-	ID3D12Resource* mGBuffer0                                 = nullptr;
-	CD3DX12_CPU_DESCRIPTOR_HANDLE mGBuffer0Handle             = {};
+	ID3D12Resource* mGBuffer0                                  = nullptr;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE mGBuffer0Handle              = {};
 	// GBuffer 1 : normal 
-	ID3D12Resource* mGBuffer1                                 = nullptr;
-	CD3DX12_CPU_DESCRIPTOR_HANDLE mGBuffer1Handle             = {};
+	ID3D12Resource* mGBuffer1                                  = nullptr;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE mGBuffer1Handle              = {};
 
+	DescriptorIndex		mGBuffersSRVIndex                      = {};
 
 	// 后处理 流程
 	// 后处理 SRV RTV
