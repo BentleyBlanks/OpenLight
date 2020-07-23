@@ -128,7 +128,7 @@ protected:
 	// Depth Pass Root Signature
 	ID3D12RootSignature* mDepthPassRootSignature                                = nullptr;
 	// Depth Pass PSO
-	ID3D12PipelineState* mDepthPassRootPSO                                      = nullptr;
+	ID3D12PipelineState* mDepthPassPSO			                                = nullptr;
 
 
 	// ÎÆÀí²ÉÑùÆ÷

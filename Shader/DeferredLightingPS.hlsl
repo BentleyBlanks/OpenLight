@@ -2,7 +2,7 @@ Texture2D diffuseMap : register(t0);
 Texture2D normalMap  : register(t1);
 SamplerState sam :register(s0);
 
-float4 DeferredLightingVSMain(StandardQuadPSInput pin):SV_TARGET
+float4 DeferredLightingPSMain(StandardQuadPSInput pin):SV_TARGET
 {
     static float3 pointDirs[3] = 
     {
