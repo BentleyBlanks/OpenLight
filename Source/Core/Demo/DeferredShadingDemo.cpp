@@ -71,7 +71,7 @@ void DeferredShadingDemo::Init(HWND hWnd)
 
 	// 从文件中加载模型
 	std::shared_ptr<MeshPkg> bunny(new MeshPkg);
-	bunny->mesh = ObjMeshLoader::loadObjMeshFromFile("F:\\OpenLight\\cube.obj");
+	bunny->mesh = ObjMeshLoader::loadObjMeshFromFile("F:\\OpenLight\\Resource\\cube.obj");
 	UINT modelSize =
 		bunny->mesh->submeshs[0].vertices.size() * sizeof(StandardVertex) +
 		bunny->mesh->submeshs[0].indices.size() * sizeof(UINT);
@@ -116,6 +116,61 @@ void DeferredShadingDemo::Init(HWND hWnd)
 	}
 	mPBRMeshs.push_back(bunny);
 
+	// 创建 diffuse 纹理
+	{
+		ThrowIfFailed(mCommandAllocator[0]->Reset());
+		ThrowIfFailed(mCommandList->Reset(mCommandAllocator[0], nullptr));
+		m39DiffuseMap = TextureMgr::LoadTexture2DFromFile2("F:\\OpenLight\\HDR_029_Sky_Cloudy_Ref.exr",
+			mDevice,
+			mCommandList,
+			mCommandQueue);
+	
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MipLevels = 1;
+		m39DescriptorIndex = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		mDescriptorHeap->AddSRV(&m39DescriptorIndex, m39DiffuseMap, srvDesc);
+	}
+	
+	// Create GBuffer
+	{
+		CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, AppConfig::ClientWidth, AppConfig::ClientHeight,
+			1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+
+		FLOAT clearColor[] = { 0.f,0.f,0.f,0.f };
+		D3D12_CLEAR_VALUE d3dClearValue;
+		d3dClearValue.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		std::memcpy(&d3dClearValue.Color, clearColor, sizeof(FLOAT) * 4);
+		ThrowIfFailed(mDevice->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&resDesc,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			&d3dClearValue,
+			IID_PPV_ARGS(&mGBuffer0)));
+
+		ThrowIfFailed(mDevice->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&resDesc,
+			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+			&d3dClearValue,
+			IID_PPV_ARGS(&mGBuffer1)));
+
+		mGBuffer0Handle = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+		mGBuffer1Handle = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+		D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+		rtvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+		rtvDesc.Texture2D.MipSlice = 0;
+		rtvDesc.Texture2D.PlaneSlice = 0;
+		mDescriptorHeap->AddRTV(&mGBuffer0Handle, mGBuffer0, rtvDesc);
+		mDescriptorHeap->AddRTV(&mGBuffer1Handle, mGBuffer1, rtvDesc);
+
+	}
 
 
 	// 创建 CPUFrameResource
@@ -1169,7 +1224,7 @@ void DeferredShadingDemo::GBuffer()
 
 	}
 	// 设置 RTV DSV
-	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = { mGBuffer0Handle,mGBuffer1Handle };
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = { mGBuffer0Handle.cpuHandle,mGBuffer1Handle.cpuHandle };
 	mCommandList->OMSetRenderTargets(2, rtvs, FALSE, &mDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 	FLOAT clearColor[] = { 0.f,0.f,0.f,1.f };
 	mCommandList->ClearRenderTargetView(rtvs[0], clearColor, 0, nullptr);	
@@ -1225,4 +1280,53 @@ void DeferredShadingDemo::GBufferTerrain()
 
 void DeferredShadingDemo::Lighting()
 {
+	// Set RootSignature and PSO
+	mCommandList->SetGraphicsRootSignature(mDeferredLightingRootSignature);
+	mCommandList->SetPipelineState(mDeferredLightingPSO);
+
+	// Set Descriptor Heap
+	ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV), mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) };
+	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+
+	// Transition RTV State
+	{
+		D3D12_RESOURCE_BARRIER barriers[2];
+		barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barriers[0].Transition.pResource = mGBuffer0;
+		barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+
+		barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barriers[1].Transition.pResource = mGBuffer1;
+		barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+		barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		barriers[1].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		
+		mCommandList->ResourceBarrier(2, barriers);
+
+	}
+
+	// Set RTV
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = { mPostprocessRTVIndex[mCurrentBackBufferIndex].cpuHandle };
+	mCommandList->OMSetRenderTargets(2, rtvs, FALSE, &mDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	FLOAT clearColor[] = { 0.f,0.f,0.f,1.f };
+	mCommandList->ClearRenderTargetView(rtvs[0], clearColor, 0, nullptr);
+	mCommandList->ClearDepthStencilView(mDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.f, 0, 0, nullptr);
+
+
+	// Set RTV Sampler
+	mCommandList->SetGraphicsRootDescriptorTable(0, mDescriptorHeap->GPUHandle(mGBuffersSRVIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(1, mDescriptorHeap->GPUHandle(mSamplerIndices));
+
+
+	// IA Setups
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	mCommandList->IASetVertexBuffers(0, 1, &mQuadVBView);
+	mCommandList->IASetIndexBuffer(&mQuadIBView);
+	//Draw Call！！！
+	mCommandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 }

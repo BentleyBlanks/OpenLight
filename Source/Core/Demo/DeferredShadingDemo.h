@@ -149,10 +149,10 @@ protected:
 
 	// GBuffer 0 : diffuse color
 	ID3D12Resource* mGBuffer0                                  = nullptr;
-	CD3DX12_CPU_DESCRIPTOR_HANDLE mGBuffer0Handle              = {};
+	DescriptorIndex mGBuffer0Handle							   = {};
 	// GBuffer 1 : normal 
 	ID3D12Resource* mGBuffer1                                  = nullptr;
-	CD3DX12_CPU_DESCRIPTOR_HANDLE mGBuffer1Handle              = {};
+	DescriptorIndex mGBuffer1Handle							   = {};
 
 	DescriptorIndex		mGBuffersSRVIndex                      = {};
 
