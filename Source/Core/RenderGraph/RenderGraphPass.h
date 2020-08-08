@@ -23,23 +23,12 @@ class RenderGraphPass
 	friend GraphCompiler;
 	friend GraphExecutor;
 public:
-	RenderGraphPass(const RenderPassID& passID) { mPassID = passID; }
-	RenderGraphPass(const RenderPassID& passID, const std::function<void(const RenderGraphPass*)>& setupFunc, const std::function<void(const RenderGraphPass*)>& executeFunc)
-	{
-		mPassID = passID;
-		mSetupFunc = setupFunc;
-		mExecuteFunc = executeFunc;
-	}
 	RenderGraphPass(
-		const RenderPassID& passID,
-		const std::function<void(const RenderGraphPass*)>& setupFunc,
-		const std::function<void(const RenderGraphPass*)>& executeFunc,
-		const std::vector<LogicalResourceID>& InputResources,
-		const std::vector<LogicalResourceID>& OutputResources
-	) :RenderGraphPass(passID, setupFunc, executeFunc)
+		const std::string& passName,
+		const RenderPassID& passID) 
 	{
-		BindInput(InputResources);
-		BindOutput(OutputResources);
+		mPassName = passName;
+		mPassID = passID; 
 	}
 
 	virtual void Setup()
@@ -64,6 +53,16 @@ public:
 		// Rebind is forbidden for the moment
 		assert(mOutputResources.empty());
 		mOutputResources = OutputResources;
+	}
+
+	virtual void BindSetupFunc(const std::function<void(const RenderGraphPass*)>& func)
+	{
+		mSetupFunc = func;
+	}
+
+	virtual void BindExecuteFunc(const std::function<void(const RenderGraphPass*)>& func)
+	{
+		mExecuteFunc = func;
 	}
 
 	virtual void BindLogicalDescriptor(const std::vector<LogicalResourceID>& logicalResources, const DescriptorDesc& desc)

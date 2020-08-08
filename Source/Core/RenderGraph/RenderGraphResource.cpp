@@ -114,9 +114,10 @@ PhysicalResourceID GraphResourceMgr::CreatePhysicalResource(const PhysicalDesc& 
 	auto device = App::GetInstance().GetRenderer()->GetDevice();
 	auto id = PhysicalResourceID(mPhysicalResources.size());
 	PhysicalResource physicalResource;
-	physicalResource.desc = desc;
-	physicalResource.state = D3D12_RESOURCE_STATE_COMMON;
-	physicalResource.type = EPhysical_Implicit;
+	physicalResource.desc      = desc;
+	physicalResource.initState = D3D12_RESOURCE_STATE_COMMON;
+	physicalResource.state     = D3D12_RESOURCE_STATE_COMMON;
+	physicalResource.type      = EPhysical_Implicit;
 	
 	
 	ThrowIfFailed(device->CreateCommittedResource(

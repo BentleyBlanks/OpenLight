@@ -23,17 +23,17 @@ public:
 		return &gRenderGraph;
 	}
 
-	template<typename... NodeArgs>
-	RenderPassID CreateGraphNode(NodeArgs&&... args)
-	{
-		auto id = mNodeGraphs.size();
-		RenderGraphPass* node = new RenderGraphPass(std::forward<NodeArgs>(args));
-		node->mRootGraph = this;
-		mGraphNodes.push_back(node);
-		mPassMap[id] = node;
-		return static_cast<RenderPassID>(id);
-	}
 
+
+	RenderPassID CreateRenderPass(const std::string& passName)
+	{
+		auto id = mGraphNodes.size();
+		RenderGraphPass* pass = new RenderGraphPass(passName, id);
+		mGraphNodes.push_back(pass);
+		pass->mRootGraph = this;
+		mPassMap[id] = pass;
+		return RenderPassID(id);
+	}
 
 
 	RenderGraphPass* GetPass(RenderPassID passID)

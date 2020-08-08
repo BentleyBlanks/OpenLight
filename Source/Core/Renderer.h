@@ -41,7 +41,9 @@ public:
 	virtual void Flush(ID3D12CommandQueue* commandQueue, ID3D12Fence* Fence, uint64_t& FenceValue);
 	virtual void renderGUI();
 
-	auto GetDevice() const { return mDevice; }
+	auto GetDevice() const			{ return mDevice; }
+	auto GetCmdList()				{ return mCommandList; }
+	auto GetCurrentCmdAllocator()	{ return mCommandAllocator[mCurrentBackBufferIndex]; }
 protected:
 
 

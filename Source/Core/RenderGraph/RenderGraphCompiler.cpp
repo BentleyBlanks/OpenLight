@@ -19,7 +19,7 @@ GraphCompiledResult GraphCompiler::Compile(RenderGraph& graph) const
 	for (auto& p : compiledResult.logicalResourceCompiledInfos)
 	{
 		// TODO: valid assert
-		_ASSERT(true);
+//		_ASSERT(true);
 
 
 		auto& node = compiledResult.dag.nodes[p.second.writer];
@@ -136,7 +136,11 @@ void GraphExecutor::Execute(GraphCompiledResult& compiledResult)
 		}
 	}
 	
-
+	// Initalize CmdList and CmdAllocator
+	auto cmdList = MacroGetCmdList();
+	auto cmdAllocator = MacroGetCurrentCmdAllocator();
+	cmdAllocator->Reset();
+	cmdList->Reset(cmdAllocator, nullptr);
 	for (auto& passID : compiledResult.sortedPass)
 	{
 		auto pass = compiledResult.renderGraph->GetPass(passID);
@@ -154,6 +158,9 @@ void GraphExecutor::ConstructResource(const RenderPassID& renderPassID, GraphCom
 	auto resourceMgr             = GraphResourceMgr::GetInstance();
 	auto pass                    = compiledInfo.renderGraph->GetPass(renderPassID);
 	auto device                  = MacroGetDevice();
+	auto cmdList				 = MacroGetCmdList();
+
+
 	// Step 1: Allocate physical resource
 	for (auto& logicalResourceID : passCompiledInfo.needToConstruct)
 	{
@@ -170,9 +177,12 @@ void GraphExecutor::ConstructResource(const RenderPassID& renderPassID, GraphCom
 			logicalResource->physicalResourceID = resourceMgr->ConstructPhysicalResource(logicalResource->physicalDesc);
 			assert(IsValidID(logicalResource->physicalResourceID));
 		}
+		
+		
 	}
 
 	// Step 2:Allocate d3d12 descriptor view
+	std::vector<D3D12_RESOURCE_BARRIER> resourceBarriers;
 	for (size_t i = 0; i < pass->mDescriptorDescs.size(); ++i)
 	{
 		const auto& descriptorDesc = pass->mDescriptorDescs[i];
@@ -238,10 +248,27 @@ void GraphExecutor::ConstructResource(const RenderPassID& renderPassID, GraphCom
 				break;
 			}
 
-			
+			// if necessary, switch physical resource state
+			if (physicalResource->state != descriptorDesc.states[resIdx])
+			{
+				D3D12_RESOURCE_BARRIER barrier;
+				barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+				barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+				barrier.Transition.pResource   = physicalResource->resource;
+				barrier.Transition.StateBefore = physicalResource->state;
+				barrier.Transition.StateAfter  = descriptorDesc.states[resIdx];
+				barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+				resourceBarriers.push_back(barrier);
+				physicalResource->state = descriptorDesc.states[resIdx];
+			}
 		}
 
 		descriptor.isInit = true;
+	}
+
+	if (!resourceBarriers.empty())
+	{
+		cmdList->ResourceBarrier(resourceBarriers.size(), &resourceBarriers[0]);
 	}
 }
 

@@ -60,6 +60,7 @@ class PhysicalResource
 {
 public:
 	ID3D12Resource*					resource = nullptr;
+	D3D12_RESOURCE_STATES			initState;
 	volatile D3D12_RESOURCE_STATES	state;
 	PhysicalDesc					desc;
 

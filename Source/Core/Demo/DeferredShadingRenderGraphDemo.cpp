@@ -1,4 +1,4 @@
-#include "DeferredShadingDemo.h"
+#include "DeferredShadingRenderGraphDemo.h"
 #include "Utility.h"
 #include "TextureManager.h"
 #include <chrono>
@@ -13,19 +13,19 @@ struct QuadVertex
 	XMFLOAT3 positionL;
 	XMFLOAT2 texcoord;
 };
-DeferredShadingDemo::DeferredShadingDemo()
+DeferredShadingRenderGraphDemo::DeferredShadingRenderGraphDemo()
 {
 	mCamera = new RoamCamera(
 		XMFLOAT3(0, 0, 1),
 		XMFLOAT3(0, 1, 0),
 		XMFLOAT3(0, 5, -40),
 		0.01f,
-		10000.f,
+		1000.f,
 		AppConfig::ClientWidth,
 		AppConfig::ClientHeight);
 }
 
-DeferredShadingDemo::~DeferredShadingDemo()
+DeferredShadingRenderGraphDemo::~DeferredShadingRenderGraphDemo()
 {
 	ReleaseCom(mConstructGBufferRootSignature);
 	ReleaseCom(mConstructGBufferPSO);
@@ -52,9 +52,8 @@ DeferredShadingDemo::~DeferredShadingDemo()
 	delete mCamera;
 }
 
-void DeferredShadingDemo::Init(HWND hWnd)
+void DeferredShadingRenderGraphDemo::Init(HWND hWnd)
 {
-
 
 	mTimer.reset();
 	Renderer::Init(hWnd);
@@ -186,7 +185,7 @@ void DeferredShadingDemo::Init(HWND hWnd)
 	// 创建 CPUFrameResource
 	for (int i = 0; i < AppConfig::NumFrames; ++i)
 	{
-		mCPUFrameResource.push_back(std::make_unique<DeferredShadingFrameResource>(mDevice, mCommandAllocator[i], mDescriptorHeap));
+		mCPUFrameResource.push_back(std::make_unique<DeferredShadingRenderGraphFrameResource>(mDevice, mCommandAllocator[i], mDescriptorHeap));
 	}
 
 
@@ -317,7 +316,7 @@ void DeferredShadingDemo::Init(HWND hWnd)
 		psoDesc.BlendState.RenderTarget[1].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 		psoDesc.DepthStencilState.DepthEnable = TRUE;
 		psoDesc.DepthStencilState.StencilEnable = FALSE;
-		psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+		psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_EQUAL;
 		psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
 		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 		psoDesc.NumRenderTargets = 2;
@@ -474,7 +473,6 @@ void DeferredShadingDemo::Init(HWND hWnd)
 
 
 
-	InitSkyBox();
 	InitPostprocess();
 	//	InitIBL();
 	ThrowIfFailed(mCommandAllocator[0]->Reset());
@@ -509,10 +507,11 @@ void DeferredShadingDemo::Init(HWND hWnd)
 		);
 	}
 
+	InitRenderGraph();
 
 }
 
-void DeferredShadingDemo::Render()
+void DeferredShadingRenderGraphDemo::Render()
 {
 	Update();
 
@@ -555,9 +554,9 @@ void DeferredShadingDemo::Render()
 	rtv = mPostprocessRTVIndex[mCurrentBackBufferIndex].cpuHandle;
 
 
-	DepthPass();
-	GBuffer();
-	Lighting();
+	//DepthPass();
+	//GBuffer();
+	//Lighting();
 
 
 
@@ -621,7 +620,7 @@ void DeferredShadingDemo::Render()
 
 }
 
-void DeferredShadingDemo::Resize(uint32_t width, uint32_t height)
+void DeferredShadingRenderGraphDemo::Resize(uint32_t width, uint32_t height)
 {
 	if (AppConfig::ClientWidth != width || AppConfig::ClientHeight != height)
 	{
@@ -646,7 +645,7 @@ void DeferredShadingDemo::Resize(uint32_t width, uint32_t height)
 	}
 }
 
-void DeferredShadingDemo::Update()
+void DeferredShadingRenderGraphDemo::Update()
 {
 	FPS();
 	mTimer.tick();
@@ -710,9 +709,7 @@ void DeferredShadingDemo::Update()
 	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbTransPtr->invTranspose, XMMatrixTranspose(world));
 
 	world = XMMatrixScaling(10, 10, 10);
-	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbSkyTransPtr->wvp, XMMatrixTranspose(world * vp));
-	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbSkyTransPtr->world, XMMatrixTranspose(world));
-	XMStoreFloat4x4(&mCPUFrameResource[mCurrentBackBufferIndex]->cbSkyTransPtr->invTranspose, XMMatrixTranspose(world));
+
 	mCPUFrameResource[mCurrentBackBufferIndex]->cbCameraPtr->cameraPositionW = XMFLOAT4(cameraPos.x, cameraPos.y, cameraPos.z, 1.f);
 
 	world = XMLoadFloat4x4(&mTerrain->world);
@@ -806,7 +803,7 @@ void DeferredShadingDemo::Update()
 
 }
 
-void DeferredShadingDemo::InitPostprocess()
+void DeferredShadingRenderGraphDemo::InitPostprocess()
 {
 	// 创建 InputLayout
 	D3D12_INPUT_ELEMENT_DESC inputDesc[] =
@@ -979,7 +976,7 @@ void DeferredShadingDemo::InitPostprocess()
 	}
 }
 
-void DeferredShadingDemo::InitSkyBox()
+void DeferredShadingRenderGraphDemo::InitSkyBox()
 {
 	mSkyBox.skyBoxMesh = ObjMeshLoader::loadObjMeshFromFile("F:\\OpenLight\\Sphere.obj");
 	auto commandAllocator = mCommandAllocator[0];
@@ -1114,7 +1111,7 @@ void DeferredShadingDemo::InitSkyBox()
 }
 
 
-void DeferredShadingDemo::FPS()
+void DeferredShadingRenderGraphDemo::FPS()
 {
 	// Code computes the average frames per second, and also the 
 	// average time it takes to render one frame.  These stats 
@@ -1146,31 +1143,13 @@ void DeferredShadingDemo::FPS()
 	}
 }
 
-void DeferredShadingDemo::RenderSkyBox()
+void DeferredShadingRenderGraphDemo::RenderSkyBox()
 {
-	mCommandList->SetGraphicsRootSignature(mSkyBox.skyBoxSignature);
 
-	mCommandList->SetPipelineState(mSkyBox.skyBoxPSORGB32);
-
-
-	ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) };
-	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-
-	// 设置SRV
-	mCommandList->SetGraphicsRootDescriptorTable(0, mDescriptorHeap->GPUHandle(mSkyBox.envMap.srvIndex));
-
-	// 设置 CBV
-	mCommandList->SetGraphicsRootDescriptorTable(1, mDescriptorHeap->GPUHandle(mCPUFrameResource[mCurrentBackBufferIndex]->cbSkyTransIndex));
-
-	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	mCommandList->IASetVertexBuffers(0, 1, &mSkyBox.skyBoxVBView);
-	mCommandList->IASetIndexBuffer(&mSkyBox.skyBoxIBView);
-	//Draw Call！！！
-	mCommandList->DrawIndexedInstanced(mSkyBox.skyBoxMesh->submeshs[0].indices.size(), 1, 0, 0, 0);
 }
 
 
-void DeferredShadingDemo::DepthPass()
+void DeferredShadingRenderGraphDemo::DepthPass(const RenderGraphPass* pass)
 {
 	// Set RootSignature and PSO
 	mCommandList->SetGraphicsRootSignature(mDepthPassRootSignature);
@@ -1194,14 +1173,10 @@ void DeferredShadingDemo::DepthPass()
 
 	// Draw Call !!
 	mCommandList->DrawIndexedInstanced(mPBRMeshs[0]->mesh->submeshs[0].indices.size(), 1, 0, 0, 0);
-
-	mCommandList->IASetVertexBuffers(0, 1, &mTerrain->vbView);
-	mCommandList->IASetIndexBuffer(&mTerrain->ibView);
-	mCommandList->DrawIndexedInstanced(mTerrain->mIndices.size(), 1, 0, 0, 0);
 	
 }
 
-void DeferredShadingDemo::GBuffer()
+void DeferredShadingRenderGraphDemo::GBuffer(const RenderGraphPass* pass)
 {
 	// Set RootSignature and PSO
 	mCommandList->SetGraphicsRootSignature(mConstructGBufferRootSignature);
@@ -1258,11 +1233,11 @@ void DeferredShadingDemo::GBuffer()
 
 
 	// Terrain
-	GBufferTerrain();
+	GBufferTerrain(pass);
 
 }
 
-void DeferredShadingDemo::GBufferTerrain()
+void DeferredShadingRenderGraphDemo::GBufferTerrain(const RenderGraphPass* pass)
 {
 	mCommandList->SetGraphicsRootSignature(mConstructGBufferTerrainRootSignature);
 	mCommandList->SetPipelineState(mConstructGBufferTerrainPSO);
@@ -1288,7 +1263,7 @@ void DeferredShadingDemo::GBufferTerrain()
 	mCommandList->DrawIndexedInstanced(mTerrain->mIndices.size(), 1, 0, 0, 0);
 }
 
-void DeferredShadingDemo::Lighting()
+void DeferredShadingRenderGraphDemo::Lighting(const RenderGraphPass* pass)
 {
 	// Set RootSignature and PSO
 	mCommandList->SetGraphicsRootSignature(mDeferredLightingRootSignature);
@@ -1339,4 +1314,145 @@ void DeferredShadingDemo::Lighting()
 	mCommandList->IASetIndexBuffer(&mQuadIBView);
 	//Draw Call！！！
 	mCommandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+}
+
+void DeferredShadingRenderGraphDemo::Postprocess(const RenderGraphPass* pass)
+{
+}
+
+void DeferredShadingRenderGraphDemo::InitRenderGraph()
+{
+	auto graphResourceMgr = GraphResourceMgr::GetInstance();
+	auto graph = RenderGraph::GetInstance();
+	// Create Logical Resource
+	// Depth Buffer
+	LogicalResourceID depthBuffer = graphResourceMgr->CreateLogicalResource("DepthBuffer");
+	// GBuffer Buffer
+	LogicalResourceID GBuffer0;
+	LogicalResourceID GBuffer1;
+	{
+		PhysicalDesc physicalDesc;
+		FLOAT clearColor[] = { 0.f,0.f,0.f,0.f };
+ 		physicalDesc.initialiValue.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		std::memcpy(&physicalDesc.initialiValue.Color, clearColor, sizeof(FLOAT) * 4);
+		physicalDesc.desc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, AppConfig::ClientWidth, AppConfig::ClientHeight,
+			1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+
+		GBuffer0 = graphResourceMgr->CreateLogicalResource("GBuffer0", physicalDesc);
+		GBuffer1 = graphResourceMgr->CreateLogicalResource("GBuffer1", physicalDesc);
+	}
+	// Scene Buffer
+	LogicalResourceID sceneBuffer;
+	{
+		PhysicalDesc physicalDesc;
+		FLOAT clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
+		D3D12_CLEAR_VALUE d3dClearValue;
+		physicalDesc.initialiValue.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		std::memcpy(&physicalDesc.initialiValue.Color, clearColor, sizeof(FLOAT) * 4);
+		physicalDesc.desc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, AppConfig::ClientWidth, AppConfig::ClientHeight,
+			1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+
+		sceneBuffer = graphResourceMgr->CreateLogicalResource("SceneBuffer", physicalDesc);
+	}
+
+	// Create Render Pass
+	mPostprocessPassID = graph->CreateRenderPass("PostprocessPass");
+	mDepthPassID       = graph->CreateRenderPass("DepthPass");
+	mLightingPassID    = graph->CreateRenderPass("LightingPass");
+	mGBufferPassID     = graph->CreateRenderPass("GBufferPass");
+
+	// Bind Resource
+	auto depthPass = graph->GetPass(mDepthPassID);
+	depthPass->BindOutput({ depthBuffer });
+
+	auto gbufferPass = graph->GetPass(mGBufferPassID);
+	gbufferPass->BindInput({ depthBuffer });
+	gbufferPass->BindOutput({ GBuffer0,GBuffer1 });
+
+	auto lightingPass = graph->GetPass(mLightingPassID);
+	lightingPass->BindInput({ GBuffer0,GBuffer1 });
+	lightingPass->BindOutput({ sceneBuffer });
+
+	auto postprocessPass = graph->GetPass(mPostprocessPassID);
+	postprocessPass->BindInput({ sceneBuffer });
+
+	// Load Physical Resource : DepthBuffer
+	{
+		PhysicalResource depthBufferResource;
+		D3D12_CLEAR_VALUE optClear;
+		optClear.Format               = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		optClear.DepthStencil.Depth   = 1.0f;
+		optClear.DepthStencil.Stencil = 0;
+
+		depthBufferResource.resource  = mDepthBuffer;
+		depthBufferResource.initState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+		depthBufferResource.state     = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+		depthBufferResource.desc      = { CD3DX12_RESOURCE_DESC(mDepthBuffer->GetDesc()),optClear };
+		depthBufferResource.type      = EPhysical_Explicit;
+		auto depthBufferResourceID = graphResourceMgr->LoadPhysicalResource(depthBufferResource);
+		graphResourceMgr->BindUnknownResource(depthBuffer, depthBufferResourceID);
+	}
+
+
+	// Bind Descriptor Resource
+	{
+		D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+		rtvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+		rtvDesc.Texture2D.MipSlice = 0;
+		rtvDesc.Texture2D.PlaneSlice = 0;
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MipLevels = 1;
+
+		DescriptorDesc gbufferRTVDesc =
+			DescriptorDesc(
+				{ GBuffer0,GBuffer1 },
+				{ rtvDesc,rtvDesc },
+				{ D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_RENDER_TARGET }
+		);
+		DescriptorDesc gbufferSRVDesc =
+			DescriptorDesc(
+				{ GBuffer0,GBuffer1 },
+				{ srvDesc,srvDesc },
+				{ D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE }
+		);
+
+		DescriptorDesc sceneBufferRTVDesc =
+			DescriptorDesc(
+				{ sceneBuffer },
+				{ rtvDesc },
+				{ D3D12_RESOURCE_STATE_RENDER_TARGET }
+		);
+
+		DescriptorDesc sceneBufferSRVDesc =
+			DescriptorDesc(
+				{ sceneBuffer },
+				{ srvDesc },
+				{ D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE }
+		);
+		
+		gbufferPass->BindLogicalDescriptor(gbufferRTVDesc.boundLogicalResources, gbufferRTVDesc);
+		lightingPass->BindLogicalDescriptor(gbufferSRVDesc.boundLogicalResources, gbufferSRVDesc);
+		lightingPass->BindLogicalDescriptor(sceneBufferRTVDesc.boundLogicalResources, sceneBufferRTVDesc);
+		postprocessPass->BindLogicalDescriptor(sceneBufferSRVDesc.boundLogicalResources, sceneBufferSRVDesc);
+	}
+
+	mDepthBufferID = depthBuffer;
+	mGBuffer0ID = GBuffer0;
+	mGBuffer1ID = GBuffer1;
+	mSceneBufferID = sceneBuffer;
+
+	// Bind Execute function
+	depthPass->BindExecuteFunc(std::bind(&DeferredShadingRenderGraphDemo::DepthPass, this, std::placeholders::_1));
+	gbufferPass->BindExecuteFunc(std::bind(&DeferredShadingRenderGraphDemo::GBuffer, this, std::placeholders::_1));
+	lightingPass->BindExecuteFunc(std::bind(&DeferredShadingRenderGraphDemo::Lighting, this, std::placeholders::_1));
+	postprocessPass->BindExecuteFunc(std::bind(&DeferredShadingRenderGraphDemo::Postprocess, this, std::placeholders::_1));
+
+	// Compile RenderGraph
+	mGraphCompiledResult = GraphCompiler::GetInstance()->Compile(*graph);
+	
+
 }

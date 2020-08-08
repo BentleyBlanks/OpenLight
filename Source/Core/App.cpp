@@ -10,6 +10,7 @@
 #include "VegetationDemo/C1Demo.h"
 #include "VegetationDemo/C2Demo.h"
 #include "Demo/DeferredShadingDemo.h"
+#include "Demo/DeferredShadingRenderGraphDemo.h"
 #include "Window.h"
 #include "App.h"
 
@@ -86,7 +87,7 @@ LRESULT CALLBACK WndProc(HWND hWnd , UINT message , WPARAM wParam , LPARAM lPara
 void App::Init(HINSTANCE hInstance)
 {
 	window   = new Window(hInstance , L"OpenLight" , WndProc);
-	renderer = new DeferredShadingDemo;
+	renderer = new DeferredShadingRenderGraphDemo;
 //	renderer = new Renderer();
 	renderer->Init(window->GetHwnd());
 	::ShowWindow(window->GetHwnd() , SW_SHOW);
