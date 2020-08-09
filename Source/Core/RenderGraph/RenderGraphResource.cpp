@@ -87,13 +87,16 @@ PhysicalResourceID GraphResourceMgr::ConstructPhysicalResource(const PhysicalDes
 		{
 			auto id = (*p);
 			mUnusedPhysicalResources.erase(p);
+			mActivatedPhysicalResources.push_back(id);
 			return id;
 		}
 	}
 	
 	// There is not physical resource that could match given desc
 	// Create it !
-	return CreatePhysicalResource(desc);
+	auto id = CreatePhysicalResource(desc);
+	mActivatedPhysicalResources.push_back(id);
+	return id;
 }
 void GraphResourceMgr::DestroyPhysicalResource(const PhysicalResourceID& physicalResourceID)
 {

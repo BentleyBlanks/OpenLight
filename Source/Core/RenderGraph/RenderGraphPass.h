@@ -86,7 +86,14 @@ public:
 
 	}
 
+	virtual const DescriptorResource* GetDescriptorResource(LogicalResourceID logicalID) const
+	{
+		auto p = mLogical2Descriptor.find(logicalID);
+		assert(p != mLogical2Descriptor.end());
 
+		return &mDescriptorResources[p->second];
+
+	}
 
 
 

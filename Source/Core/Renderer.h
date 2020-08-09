@@ -44,6 +44,7 @@ public:
 	auto GetDevice() const			{ return mDevice; }
 	auto GetCmdList()				{ return mCommandList; }
 	auto GetCurrentCmdAllocator()	{ return mCommandAllocator[mCurrentBackBufferIndex]; }
+	auto GetCurrentBackBufferIndex() { return mCurrentBackBufferIndex; }
 protected:
 
 

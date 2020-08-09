@@ -62,3 +62,5 @@ timg.jpg
 *.jpg
 *.dds
 *.dll
+*.gif
+Build/OpenLight/CMakeFiles/3.18.0-rc2/CompilerIdCXX/CMakeCXXCompilerId.cpp

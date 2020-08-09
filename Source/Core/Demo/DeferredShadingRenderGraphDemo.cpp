@@ -41,12 +41,6 @@ DeferredShadingRenderGraphDemo::~DeferredShadingRenderGraphDemo()
 	ReleaseCom(mQuadVB);
 	ReleaseCom(mQuadIB);
 
-
-	for (int i = 0; i < AppConfig::NumFrames; ++i)
-	{
-		ReleaseCom(mSceneColorBuffer[i]);
-	}
-
 	delete mUploadHeap;
 	delete mDescriptorHeap;
 	delete mCamera;
@@ -133,55 +127,6 @@ void DeferredShadingRenderGraphDemo::Init(HWND hWnd)
 		mDescriptorHeap->AddSRV(&m39DescriptorIndex, m39DiffuseMap, srvDesc);
 	}
 	
-	// Create GBuffer
-	{
-		CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32B32A32_FLOAT, AppConfig::ClientWidth, AppConfig::ClientHeight,
-			1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
-
-		FLOAT clearColor[] = { 0.f,0.f,0.f,0.f };
-		D3D12_CLEAR_VALUE d3dClearValue;
-		d3dClearValue.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-		std::memcpy(&d3dClearValue.Color, clearColor, sizeof(FLOAT) * 4);
-		ThrowIfFailed(mDevice->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-			D3D12_HEAP_FLAG_NONE,
-			&resDesc,
-			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-			&d3dClearValue,
-			IID_PPV_ARGS(&mGBuffer0)));
-
-		ThrowIfFailed(mDevice->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-			D3D12_HEAP_FLAG_NONE,
-			&resDesc,
-			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-			&d3dClearValue,
-			IID_PPV_ARGS(&mGBuffer1)));
-
-		mGBuffer0Handle = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-		mGBuffer1Handle = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-
-		D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-		rtvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-		rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-		rtvDesc.Texture2D.MipSlice = 0;
-		rtvDesc.Texture2D.PlaneSlice = 0;
-		mDescriptorHeap->AddRTV(&mGBuffer0Handle, mGBuffer0, rtvDesc);
-		mDescriptorHeap->AddRTV(&mGBuffer1Handle, mGBuffer1, rtvDesc);
-
-		mGBuffersSRVIndex = mDescriptorHeap->Allocate(2, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-		
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srvDesc.Texture2D.MipLevels = 1;
-		mDescriptorHeap->AddSRV(&mGBuffersSRVIndex, mGBuffer0, srvDesc);
-		mDescriptorHeap->AddSRV(&mGBuffersSRVIndex, mGBuffer1, srvDesc);
-
-	}
-
-
 	// 创建 CPUFrameResource
 	for (int i = 0; i < AppConfig::NumFrames; ++i)
 	{
@@ -514,7 +459,7 @@ void DeferredShadingRenderGraphDemo::Init(HWND hWnd)
 void DeferredShadingRenderGraphDemo::Render()
 {
 	Update();
-
+	GraphResourceMgr::GetInstance()->BeginFrame();
 	auto commandAllocator = mCommandAllocator[mCurrentBackBufferIndex];
 	auto backBuffer = mBackBuffer[mCurrentBackBufferIndex];
 
@@ -522,19 +467,6 @@ void DeferredShadingRenderGraphDemo::Render()
 	commandAllocator->Reset();
 	mCommandList->Reset(commandAllocator, nullptr);
 	static bool firstCreateNoise = true;
-
-	// 切换 Scene Color 状态	
-	{
-		D3D12_RESOURCE_BARRIER barrier = {};
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		barrier.Transition.pResource = mSceneColorBuffer[mCurrentBackBufferIndex];
-		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-		mCommandList->ResourceBarrier(1, &barrier);
-	}
-
 
 	mCommandList->RSSetViewports(1, &mViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
@@ -549,46 +481,10 @@ void DeferredShadingRenderGraphDemo::Render()
 	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 	mCommandList->ResourceBarrier(1, &barrier);
 
-	FLOAT clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
-	D3D12_CPU_DESCRIPTOR_HANDLE rtv;
-	rtv = mPostprocessRTVIndex[mCurrentBackBufferIndex].cpuHandle;
-
-
 	//DepthPass();
 	//GBuffer();
 	//Lighting();
-
-
-
-	// 后处理
-	{
-		// 切换 Scene Color
-		D3D12_RESOURCE_BARRIER barrier = {};
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		barrier.Transition.pResource = mSceneColorBuffer[mCurrentBackBufferIndex];
-		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-		mCommandList->ResourceBarrier(1, &barrier);
-
-		mCommandList->SetGraphicsRootSignature(mPostprocessSignature);
-		mCommandList->SetPipelineState(mPostprocessPSO);
-		ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) };
-		mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-		mCommandList->SetGraphicsRootDescriptorTable(0, mDescriptorHeap->GPUHandle(mPostprocessSRVIndex[mCurrentBackBufferIndex]));
-		rtv = (mRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-		rtv.ptr += mCurrentBackBufferIndex * mRTVDescriptorSize;
-		mCommandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
-
-		mCommandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
-		mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		mCommandList->IASetVertexBuffers(0, 1, &mQuadVBView);
-		mCommandList->IASetIndexBuffer(&mQuadIBView);
-		//Draw Call！！！
-		mCommandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
-
-	}
+	GraphExecutor::GetInstance()->Execute(mGraphCompiledResult);
 
 	// GUI
 	renderGUI();
@@ -930,184 +826,10 @@ void DeferredShadingRenderGraphDemo::InitPostprocess()
 	mQuadIBView.Format = DXGI_FORMAT_R32_UINT;
 	mQuadIBView.SizeInBytes = sizeof(UINT) * indices.size();
 
-	FLOAT clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
-	D3D12_CLEAR_VALUE d3dClearValue;
-	d3dClearValue.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-	std::memcpy(&d3dClearValue.Color, clearColor, sizeof(FLOAT) * 4);
-	for (int i = 0; i < AppConfig::NumFrames; ++i)
-	{
-		ThrowIfFailed(mDevice->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Tex2D(
-				DXGI_FORMAT_R32G32B32A32_FLOAT,
-				AppConfig::ClientWidth,
-				AppConfig::ClientHeight,
-				1, 1, 1, 0,
-				D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
-			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-			&d3dClearValue,
-			IID_PPV_ARGS(&mSceneColorBuffer[i])));
-	}
-
-	{
-
-
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {  };
-		srvDesc.Shader4ComponentMapping         = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Format                          = DXGI_FORMAT_R32G32B32A32_FLOAT;
-		srvDesc.ViewDimension                   = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srvDesc.Texture2D.MipLevels             = 1;
-		D3D12_RENDER_TARGET_VIEW_DESC rtvDesc   = {};
-		rtvDesc.Format                          = DXGI_FORMAT_R32G32B32A32_FLOAT;
-		rtvDesc.ViewDimension                   = D3D12_RTV_DIMENSION_TEXTURE2D;
-		rtvDesc.Texture2D.MipSlice              = 0;
-		rtvDesc.Texture2D.PlaneSlice            = 0;
-
-		for (int i = 0; i < AppConfig::NumFrames; ++i)
-		{
-
-			mPostprocessSRVIndex[i] = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-			mDescriptorHeap->AddSRV(&mPostprocessSRVIndex[i], mSceneColorBuffer[i], srvDesc);
-
-			mPostprocessRTVIndex[i] = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-			mDescriptorHeap->AddRTV(&mPostprocessRTVIndex[i], mSceneColorBuffer[i], rtvDesc);
-		}
-	}
 }
 
 void DeferredShadingRenderGraphDemo::InitSkyBox()
 {
-	mSkyBox.skyBoxMesh = ObjMeshLoader::loadObjMeshFromFile("F:\\OpenLight\\Sphere.obj");
-	auto commandAllocator = mCommandAllocator[0];
-	ThrowIfFailed(commandAllocator->Reset());
-	ThrowIfFailed(mCommandList->Reset(commandAllocator, nullptr));
-	mSkyBox.envMap.image = TextureMgr::LoadTexture2DFromFile2("F:\\OpenLight\\HDR_029_Sky_Cloudy_Ref.exr",
-		mDevice,
-		mCommandList,
-		mCommandQueue);
-
-	ThrowIfFailed(mDevice->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(StandardVertex) * mSkyBox.skyBoxMesh->submeshs[0].vertices.size()),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&mSkyBox.vb)));
-	ThrowIfFailed(mDevice->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(sizeof(UINT) * mSkyBox.skyBoxMesh->submeshs[0].indices.size()),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&mSkyBox.ib)));
-
-	{
-		void* p = nullptr;
-		ThrowIfFailed(mSkyBox.vb->Map(0, nullptr, &p));
-		std::memcpy(p, &mSkyBox.skyBoxMesh->submeshs[0].vertices[0], sizeof(StandardVertex) * mSkyBox.skyBoxMesh->submeshs[0].vertices.size());
-		mSkyBox.vb->Unmap(0, nullptr);
-		ThrowIfFailed(mSkyBox.ib->Map(0, nullptr, &p));
-		std::memcpy(p, &mSkyBox.skyBoxMesh->submeshs[0].indices[0], sizeof(UINT) * mSkyBox.skyBoxMesh->submeshs[0].indices.size());
-		mSkyBox.ib->Unmap(0, nullptr);
-	}
-	mSkyBox.skyBoxVBView.BufferLocation = mSkyBox.vb->GetGPUVirtualAddress();
-	mSkyBox.skyBoxVBView.StrideInBytes = sizeof(StandardVertex);
-	mSkyBox.skyBoxVBView.SizeInBytes = sizeof(StandardVertex) * mSkyBox.skyBoxMesh->submeshs[0].vertices.size();
-	mSkyBox.skyBoxIBView.BufferLocation = mSkyBox.ib->GetGPUVirtualAddress();
-	mSkyBox.skyBoxIBView.Format = DXGI_FORMAT_R32_UINT;
-	mSkyBox.skyBoxIBView.SizeInBytes = sizeof(UINT) * mSkyBox.skyBoxMesh->submeshs[0].indices.size();
-
-	// 创建 InputLayout
-	D3D12_INPUT_ELEMENT_DESC inputDesc[] =
-	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TANGENT",0,DXGI_FORMAT_R32G32B32_FLOAT,0,24,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 36, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-	};
-
-	WRL::ComPtr<ID3DBlob> vs;
-	WRL::ComPtr<ID3DBlob> ps;
-
-#if defined(_DEBUG)		
-	UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#else
-	UINT compileFlags = 0;
-#endif
-
-	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\SkyBoxVS.hlsl",
-		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "SkyBoxMainVS", "vs_5_0", compileFlags, 0, &vs, nullptr));
-	ThrowIfFailed(D3DCompileFromFile(L"F:\\OpenLight\\Shader\\SkyBoxPS.hlsl",
-		nullptr, D3D_HLSL_DEFUALT_INCLUDE, "SkyBoxMainPS", "ps_5_0", compileFlags, 0, &ps, nullptr));
-
-	CD3DX12_ROOT_PARAMETER1 rootParameters[2];
-	CD3DX12_DESCRIPTOR_RANGE1 descRange[2];
-	descRange[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE);
-	descRange[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0);
-	rootParameters[0].InitAsDescriptorTable(1, &descRange[0], D3D12_SHADER_VISIBILITY_PIXEL);
-	rootParameters[1].InitAsDescriptorTable(1, &descRange[1], D3D12_SHADER_VISIBILITY_ALL);
-	D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
-	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-	samplerDesc.MinLOD = 0.f;
-	samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-	samplerDesc.MipLODBias = 0.0f;
-	samplerDesc.MaxAnisotropy = 1;
-	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-	samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
-	rootSignatureDesc.Init_1_1(2, rootParameters,
-		1, &samplerDesc,
-		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-
-	WRL::ComPtr<ID3DBlob> pSignatureBlob;
-	WRL::ComPtr<ID3DBlob> pErrorBlob;
-	ThrowIfFailed(D3DX12SerializeVersionedRootSignature(
-		&rootSignatureDesc,
-		D3D_ROOT_SIGNATURE_VERSION_1_1,
-		&pSignatureBlob,
-		&pErrorBlob));
-	ThrowIfFailed(mDevice->CreateRootSignature(0,
-		pSignatureBlob->GetBufferPointer(),
-		pSignatureBlob->GetBufferSize(),
-		IID_PPV_ARGS(&mSkyBox.skyBoxSignature)));
-
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.InputLayout = { inputDesc, _countof(inputDesc) };
-	psoDesc.pRootSignature = mSkyBox.skyBoxSignature;
-	psoDesc.VS.pShaderBytecode = vs->GetBufferPointer();
-	psoDesc.VS.BytecodeLength = vs->GetBufferSize();
-	psoDesc.PS.pShaderBytecode = ps->GetBufferPointer();
-	psoDesc.PS.BytecodeLength = ps->GetBufferSize();
-	psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
-	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
-	psoDesc.BlendState.AlphaToCoverageEnable = FALSE;
-	psoDesc.BlendState.IndependentBlendEnable = FALSE;
-	psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-	psoDesc.DepthStencilState.DepthEnable = TRUE;
-	psoDesc.DepthStencilState.StencilEnable = FALSE;
-	psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
-	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDesc.NumRenderTargets = 1;
-	psoDesc.SampleMask = UINT_MAX;
-	psoDesc.SampleDesc.Count = 1;
-	psoDesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
-	psoDesc.DSVFormat = psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	ThrowIfFailed(mDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mSkyBox.skyBoxPSORGB32)));
-
-	// 创建 Texture SRV
-	{
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srvDesc.Texture2D.MipLevels = 1;
-		mSkyBox.envMap.srvIndex = mDescriptorHeap->Allocate(1, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-		mDescriptorHeap->AddSRV(&mSkyBox.envMap.srvIndex, mSkyBox.envMap.image, srvDesc);
-	}
-
 }
 
 
@@ -1173,43 +895,34 @@ void DeferredShadingRenderGraphDemo::DepthPass(const RenderGraphPass* pass)
 
 	// Draw Call !!
 	mCommandList->DrawIndexedInstanced(mPBRMeshs[0]->mesh->submeshs[0].indices.size(), 1, 0, 0, 0);
+
+	mCommandList->IASetVertexBuffers(0, 1, &mTerrain->vbView);
+	mCommandList->IASetIndexBuffer(&mTerrain->ibView);
+	mCommandList->DrawIndexedInstanced(mTerrain->mIndices.size(), 1, 0, 0, 0);
 	
 }
 
 void DeferredShadingRenderGraphDemo::GBuffer(const RenderGraphPass* pass)
 {
+	auto dynamicHeap = GPUDynamicDescriptorHeapWrap::GetInstance();
+	auto resourceMgr = GraphResourceMgr::GetInstance();
+	auto gbuffer0RTV = pass->GetDescriptorResource(mGBuffer0ID);
+	auto gbuffer1RTV = pass->GetDescriptorResource(mGBuffer1ID);
+	
+
+	
 	// Set RootSignature and PSO
 	mCommandList->SetGraphicsRootSignature(mConstructGBufferRootSignature);
 	mCommandList->SetPipelineState(mConstructGBufferPSO);
+
 
 	// Set Descriptor Heap
 	ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV), mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) };
 	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-	// Transition RTV State
-	{
-		D3D12_RESOURCE_BARRIER barriers[2];
-		barriers[0].Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barriers[0].Transition.pResource   = mGBuffer0;
-		barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-		barriers[0].Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-		barriers[0].Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-
-		barriers[1].Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barriers[1].Transition.pResource   = mGBuffer1;
-		barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-		barriers[1].Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-		barriers[1].Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-
-		mCommandList->ResourceBarrier(2, barriers);
-
-
-
-	}
 	// 设置 RTV DSV
-	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = { mGBuffer0Handle.cpuHandle,mGBuffer1Handle.cpuHandle };
+	
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = { gbuffer0RTV->cpuHandle,gbuffer1RTV->cpuHandle };
 	mCommandList->OMSetRenderTargets(2, rtvs, FALSE, &mDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 	FLOAT clearColor[] = { 0.f,0.f,0.f,1.f };
 	mCommandList->ClearRenderTargetView(rtvs[0], clearColor, 0, nullptr);	
@@ -1265,38 +978,22 @@ void DeferredShadingRenderGraphDemo::GBufferTerrain(const RenderGraphPass* pass)
 
 void DeferredShadingRenderGraphDemo::Lighting(const RenderGraphPass* pass)
 {
+
+	auto dynamicHeap = GPUDynamicDescriptorHeapWrap::GetInstance();
+	auto resourceMgr = GraphResourceMgr::GetInstance();
+	auto gbufferSRV = pass->GetDescriptorResource(mGBuffer0ID);
+	auto sceneRTV = pass->GetDescriptorResource(mSceneBufferID);
+
 	// Set RootSignature and PSO
 	mCommandList->SetGraphicsRootSignature(mDeferredLightingRootSignature);
 	mCommandList->SetPipelineState(mDeferredLightingPSO);
 
+
 	// Set Descriptor Heap
-	ID3D12DescriptorHeap* ppHeaps[] = { mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV), mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) };
+	ID3D12DescriptorHeap* ppHeaps[] = { dynamicHeap->GetGPUDescriptorHeap(), mDescriptorHeap->GetHeap(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER) };
 	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-
-	// Transition RTV State
-	{
-		D3D12_RESOURCE_BARRIER barriers[2];
-		barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barriers[0].Transition.pResource = mGBuffer0;
-		barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-		barriers[0].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-		barriers[0].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-
-		barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barriers[1].Transition.pResource = mGBuffer1;
-		barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-		barriers[1].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-		barriers[1].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		
-		mCommandList->ResourceBarrier(2, barriers);
-
-	}
-
-	// Set RTV
-	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = { mPostprocessRTVIndex[mCurrentBackBufferIndex].cpuHandle };
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvs[] = { sceneRTV->cpuHandle };
 	mCommandList->OMSetRenderTargets(1, rtvs, FALSE, &mDSVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 	FLOAT clearColor[] = { 0.f,0.f,0.f,1.f };
 	mCommandList->ClearRenderTargetView(rtvs[0], clearColor, 0, nullptr);
@@ -1304,7 +1001,7 @@ void DeferredShadingRenderGraphDemo::Lighting(const RenderGraphPass* pass)
 
 
 	// Set RTV Sampler
-	mCommandList->SetGraphicsRootDescriptorTable(0, mDescriptorHeap->GPUHandle(mGBuffersSRVIndex));
+	mCommandList->SetGraphicsRootDescriptorTable(0, gbufferSRV->gpuHandle);
 	mCommandList->SetGraphicsRootDescriptorTable(1, mDescriptorHeap->GPUHandle(mSamplerIndices));
 
 
@@ -1318,6 +1015,27 @@ void DeferredShadingRenderGraphDemo::Lighting(const RenderGraphPass* pass)
 
 void DeferredShadingRenderGraphDemo::Postprocess(const RenderGraphPass* pass)
 {
+	auto dynamicHeap = GPUDynamicDescriptorHeapWrap::GetInstance();
+	auto resourceMgr = GraphResourceMgr::GetInstance();
+	auto sceneSRV = pass->GetDescriptorResource(mSceneBufferID);
+
+	mCommandList->SetGraphicsRootSignature(mPostprocessSignature);
+	mCommandList->SetPipelineState(mPostprocessPSO);
+	ID3D12DescriptorHeap* ppHeaps[] = { dynamicHeap->GetGPUDescriptorHeap() };
+	mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+	mCommandList->SetGraphicsRootDescriptorTable(0, sceneSRV->gpuHandle);
+
+	auto rtv = (mRTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	rtv.ptr += mCurrentBackBufferIndex * mRTVDescriptorSize;
+	mCommandList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+
+	FLOAT clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
+	mCommandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	mCommandList->IASetVertexBuffers(0, 1, &mQuadVBView);
+	mCommandList->IASetIndexBuffer(&mQuadIBView);
+	//Draw Call！！！
+	mCommandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 }
 
 void DeferredShadingRenderGraphDemo::InitRenderGraph()
@@ -1356,10 +1074,10 @@ void DeferredShadingRenderGraphDemo::InitRenderGraph()
 	}
 
 	// Create Render Pass
-	mPostprocessPassID = graph->CreateRenderPass("PostprocessPass");
 	mDepthPassID       = graph->CreateRenderPass("DepthPass");
-	mLightingPassID    = graph->CreateRenderPass("LightingPass");
 	mGBufferPassID     = graph->CreateRenderPass("GBufferPass");
+	mLightingPassID    = graph->CreateRenderPass("LightingPass");
+	mPostprocessPassID = graph->CreateRenderPass("PostprocessPass");
 
 	// Bind Resource
 	auto depthPass = graph->GetPass(mDepthPassID);
@@ -1407,11 +1125,17 @@ void DeferredShadingRenderGraphDemo::InitRenderGraph()
 		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srvDesc.Texture2D.MipLevels = 1;
 
-		DescriptorDesc gbufferRTVDesc =
+		DescriptorDesc gbuffer0RTVDesc =
 			DescriptorDesc(
-				{ GBuffer0,GBuffer1 },
-				{ rtvDesc,rtvDesc },
-				{ D3D12_RESOURCE_STATE_RENDER_TARGET,D3D12_RESOURCE_STATE_RENDER_TARGET }
+				{ GBuffer0 },
+				{ rtvDesc },
+				{ D3D12_RESOURCE_STATE_RENDER_TARGET}
+		);
+		DescriptorDesc gbuffer1RTVDesc =
+			DescriptorDesc(
+				{ GBuffer1 },
+				{ rtvDesc },
+				{ D3D12_RESOURCE_STATE_RENDER_TARGET }
 		);
 		DescriptorDesc gbufferSRVDesc =
 			DescriptorDesc(
@@ -1434,7 +1158,8 @@ void DeferredShadingRenderGraphDemo::InitRenderGraph()
 				{ D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE }
 		);
 		
-		gbufferPass->BindLogicalDescriptor(gbufferRTVDesc.boundLogicalResources, gbufferRTVDesc);
+		gbufferPass->BindLogicalDescriptor(gbuffer0RTVDesc.boundLogicalResources, gbuffer0RTVDesc);
+		gbufferPass->BindLogicalDescriptor(gbuffer1RTVDesc.boundLogicalResources, gbuffer1RTVDesc);
 		lightingPass->BindLogicalDescriptor(gbufferSRVDesc.boundLogicalResources, gbufferSRVDesc);
 		lightingPass->BindLogicalDescriptor(sceneBufferRTVDesc.boundLogicalResources, sceneBufferRTVDesc);
 		postprocessPass->BindLogicalDescriptor(sceneBufferSRVDesc.boundLogicalResources, sceneBufferSRVDesc);

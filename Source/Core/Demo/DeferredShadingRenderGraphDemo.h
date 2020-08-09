@@ -146,29 +146,16 @@ protected:
 	D3D12_RECT								mScissorRect = {};
 
 	// 渲染天空盒
-	SkyBox									mSkyBox = {};
+	//	SkyBox									mSkyBox = {};
 
-
-	// GBuffer 0 : diffuse color
-	ID3D12Resource* mGBuffer0 = nullptr;
-	DescriptorIndex mGBuffer0Handle = {};
-	// GBuffer 1 : normal 
-	ID3D12Resource* mGBuffer1 = nullptr;
-	DescriptorIndex mGBuffer1Handle = {};
-
-	DescriptorIndex		mGBuffersSRVIndex = {};
 
 	// 后处理 流程
-	// 后处理 SRV RTV
-	DescriptorIndex						mPostprocessSRVIndex[3];
-	DescriptorIndex						mPostprocessRTVIndex[3];
 	ID3D12RootSignature* mPostprocessSignature = nullptr;
 	ID3D12PipelineState* mPostprocessPSO = nullptr;
 	ID3D12Resource1* mQuadVB = nullptr;
 	ID3D12Resource1* mQuadIB = nullptr;
 	D3D12_VERTEX_BUFFER_VIEW			mQuadVBView;
 	D3D12_INDEX_BUFFER_VIEW				mQuadIBView;
-	ID3D12Resource1* mSceneColorBuffer[AppConfig::NumFrames];
 
 	// Upload 堆
 	OpenLight::GPUUploadHeapWrap* mUploadHeap = nullptr;

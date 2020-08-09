@@ -2,9 +2,10 @@
 #include "Timer.h"
 class Window;
 class Renderer;
-#define MacroGetDevice()				App::GetInstance().GetRenderer()->GetDevice()
-#define MacroGetCmdList()				App::GetInstance().GetRenderer()->GetCmdList()
-#define MacroGetCurrentCmdAllocator()	App::GetInstance().GetRenderer()->GetCurrentCmdAllocator()
+#define MacroGetDevice()					App::GetInstance().GetRenderer()->GetDevice()
+#define MacroGetCmdList()					App::GetInstance().GetRenderer()->GetCmdList()
+#define MacroGetCurrentCmdAllocator()		App::GetInstance().GetRenderer()->GetCurrentCmdAllocator()
+#define MacroGetCurrentBackBufferIndex()	App::GetInstance().GetRenderer()->GetCurrentBackBufferIndex()
 class App
 {
 public:

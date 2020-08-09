@@ -119,31 +119,20 @@ namespace OpenLight
 		CD3DX12_CPU_DESCRIPTOR_HANDLE AllocateRTV(UINT size);
 		CD3DX12_CPU_DESCRIPTOR_HANDLE AllocateDSV(UINT size);
 
-		ID3D12DescriptorHeap* GetGPUDescriptorHeap() {
-			return nullptr;
-		}
-		ID3D12DescriptorHeap* GetRTVDescriptorHeap() {
-			return nullptr;
-		}
-		ID3D12DescriptorHeap* GetDSVDescriptorHeap()
-		{
-			return nullptr;
-		}
+		ID3D12DescriptorHeap* GetGPUDescriptorHeap();
+		ID3D12DescriptorHeap* GetRTVDescriptorHeap();
+		ID3D12DescriptorHeap* GetDSVDescriptorHeap();
 
-		void Reset() {
-			mOffsets[0] = 0;
-			mOffsets[1] = 0;
-			mOffsets[2] = 0;
-		}
+		void Reset();
 	protected:
-		ID3D12DescriptorHeap* mGPUDescriptorHeap = nullptr;
-		ID3D12DescriptorHeap* mRTVDescriptorHeap = nullptr;
-		ID3D12DescriptorHeap* mDSVDescriptorHeap = nullptr;
+		ID3D12DescriptorHeap* mGPUDescriptorHeap[3] = { nullptr,nullptr,nullptr };
+		ID3D12DescriptorHeap* mRTVDescriptorHeap[3] = { nullptr,nullptr,nullptr };
+		ID3D12DescriptorHeap* mDSVDescriptorHeap[3] = { nullptr,nullptr,nullptr };
 
 		// 0: GPU
 		// 1: RTV
 		// 2: DSV
-		std::array<UINT, 3>		mOffsets;
+		std::array<UINT, 3>		mOffsets[3];
 		ID3D12Device5* mDevice = nullptr;
 	};
 }

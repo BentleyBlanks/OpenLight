@@ -92,7 +92,34 @@ struct DescriptorDesc
 		const std::vector<LogicalResourceID>& resources,
 		const std::vector<D3DViewDesc>& descs,
 		const std::vector<D3D12_RESOURCE_STATES>& rstates
-	) :boundLogicalResources(resources), viewDescs(descs), states(rstates) {}
+	) :boundLogicalResources(resources), viewDescs(descs), states(rstates) 
+	{
+		//using D3DViewDesc = std::variant<
+		//	D3D12_CONSTANT_BUFFER_VIEW_DESC,
+		//	D3D12_SHADER_RESOURCE_VIEW_DESC,
+		//	D3D12_UNORDERED_ACCESS_VIEW_DESC,
+		//	D3D12_RENDER_TARGET_VIEW_DESC,
+		//	D3D12_DEPTH_STENCIL_VIEW_DESC>;
+		assert(!resources.empty() && resources.size() == descs.size() && resources.size() == rstates.size());
+
+
+		switch (descs[0].index())
+		{
+		case 0:
+		case 1:
+		case 2:
+			heapType = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+			break;
+		case 3:
+			heapType = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+			break;
+		case 4:
+			heapType = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+			break;
+		default:
+			break;
+		}
+	}
 	std::vector<LogicalResourceID>			boundLogicalResources;
 	std::vector<D3DViewDesc>				viewDescs;
 	std::vector<D3D12_RESOURCE_STATES>		states;

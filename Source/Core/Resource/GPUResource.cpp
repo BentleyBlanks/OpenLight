@@ -216,36 +216,40 @@ OpenLight::GPUDynamicDescriptorHeapWrap* OpenLight::GPUDynamicDescriptorHeapWrap
 
 OpenLight::GPUDynamicDescriptorHeapWrap::GPUDynamicDescriptorHeapWrap(ID3D12Device5* device):mDevice(device)
 {
-	D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+	for (size_t i = 0; i < 3; ++i)
+	{
+		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
 
-	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	desc.NumDescriptors = DEFAULT_COMMON_SIZE;
-	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	desc.NodeMask = 0;
-	ThrowIfFailed(mDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&mGPUDescriptorHeap)));
-	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	ThrowIfFailed(mDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&mRTVDescriptorHeap)));
-	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-	ThrowIfFailed(mDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&mDSVDescriptorHeap)));
+		desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		desc.NumDescriptors = DEFAULT_COMMON_SIZE;
+		desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		desc.NodeMask = 0;
+		ThrowIfFailed(mDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&mGPUDescriptorHeap[i])));
+		desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+		desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+		ThrowIfFailed(mDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&mRTVDescriptorHeap[i])));
+		desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+		ThrowIfFailed(mDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&mDSVDescriptorHeap[i])));
 
-	mOffsets[0] = 0;
-	mOffsets[1] = 0;
-	mOffsets[2] = 0;
+		mOffsets[i][0] = 0;
+		mOffsets[i][1] = 0;
+		mOffsets[i][2] = 0;
+	}
 }
 
 std::pair<CD3DX12_GPU_DESCRIPTOR_HANDLE, CD3DX12_CPU_DESCRIPTOR_HANDLE> OpenLight::GPUDynamicDescriptorHeapWrap::AllocateGPU(UINT size)
 {
-	assert(mOffsets[0] + size < DEFAULT_COMMON_SIZE);
+	auto currentBackBufferIndex = MacroGetCurrentBackBufferIndex();
+	assert(mOffsets[currentBackBufferIndex][0] + size < DEFAULT_COMMON_SIZE);
 
-	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mGPUDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
-		mOffsets[0],
+	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mGPUDescriptorHeap[currentBackBufferIndex]->GetGPUDescriptorHandleForHeapStart(),
+		mOffsets[currentBackBufferIndex][0],
 		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
-	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mGPUDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-		mOffsets[0],
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mGPUDescriptorHeap[currentBackBufferIndex]->GetCPUDescriptorHandleForHeapStart(),
+		mOffsets[currentBackBufferIndex][0],
 		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV));
 
-	mOffsets[0] += size;
+	mOffsets[currentBackBufferIndex][0] += size;
 	return std::pair<CD3DX12_GPU_DESCRIPTOR_HANDLE, CD3DX12_CPU_DESCRIPTOR_HANDLE>(gpuHandle, cpuHandle);
 	
 
@@ -253,22 +257,50 @@ std::pair<CD3DX12_GPU_DESCRIPTOR_HANDLE, CD3DX12_CPU_DESCRIPTOR_HANDLE> OpenLigh
 
 CD3DX12_CPU_DESCRIPTOR_HANDLE OpenLight::GPUDynamicDescriptorHeapWrap::AllocateRTV(UINT size)
 {
-	assert(mOffsets[1] + size < DEFAULT_COMMON_SIZE);
-	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mGPUDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-		mOffsets[1],
+	auto currentBackBufferIndex = MacroGetCurrentBackBufferIndex();
+	assert(mOffsets[currentBackBufferIndex][1] + size < DEFAULT_COMMON_SIZE);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mRTVDescriptorHeap[currentBackBufferIndex]->GetCPUDescriptorHandleForHeapStart(),
+		mOffsets[currentBackBufferIndex][1],
 		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV));
-	mOffsets[1] += size;
+	mOffsets[currentBackBufferIndex][1] += size;
 	return cpuHandle;
 }
 
 CD3DX12_CPU_DESCRIPTOR_HANDLE OpenLight::GPUDynamicDescriptorHeapWrap::AllocateDSV(UINT size)
 {
-	assert(mOffsets[2] + size < DEFAULT_COMMON_SIZE);
-	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mGPUDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-		mOffsets[2],
+	auto currentBackBufferIndex = MacroGetCurrentBackBufferIndex();
+	assert(mOffsets[currentBackBufferIndex][2] + size < DEFAULT_COMMON_SIZE);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mDSVDescriptorHeap[currentBackBufferIndex]->GetCPUDescriptorHandleForHeapStart(),
+		mOffsets[currentBackBufferIndex][2],
 		mDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV));
-	mOffsets[2] += size;
+	mOffsets[currentBackBufferIndex][2] += size;
 	return cpuHandle;
+}
+
+ID3D12DescriptorHeap* OpenLight::GPUDynamicDescriptorHeapWrap::GetGPUDescriptorHeap()
+{
+	auto currentBackBufferIndex = MacroGetCurrentBackBufferIndex();
+	return mGPUDescriptorHeap[currentBackBufferIndex];
+}
+
+ID3D12DescriptorHeap* OpenLight::GPUDynamicDescriptorHeapWrap::GetRTVDescriptorHeap()
+{
+	auto currentBackBufferIndex = MacroGetCurrentBackBufferIndex();
+	return mRTVDescriptorHeap[currentBackBufferIndex];
+}
+
+ID3D12DescriptorHeap* OpenLight::GPUDynamicDescriptorHeapWrap::GetDSVDescriptorHeap()
+{
+	auto currentBackBufferIndex = MacroGetCurrentBackBufferIndex();
+	return mDSVDescriptorHeap[currentBackBufferIndex];
+}
+
+void OpenLight::GPUDynamicDescriptorHeapWrap::Reset()
+{
+	auto currentBackBufferIndex = MacroGetCurrentBackBufferIndex();
+	mOffsets[currentBackBufferIndex][0] = 0;
+	mOffsets[currentBackBufferIndex][1] = 0;
+	mOffsets[currentBackBufferIndex][2] = 0;
 }
 
 

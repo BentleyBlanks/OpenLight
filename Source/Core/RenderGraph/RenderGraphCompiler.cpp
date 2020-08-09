@@ -139,8 +139,8 @@ void GraphExecutor::Execute(GraphCompiledResult& compiledResult)
 	// Initalize CmdList and CmdAllocator
 	auto cmdList = MacroGetCmdList();
 	auto cmdAllocator = MacroGetCurrentCmdAllocator();
-	cmdAllocator->Reset();
-	cmdList->Reset(cmdAllocator, nullptr);
+	//cmdAllocator->Reset();
+	//cmdList->Reset(cmdAllocator, nullptr);
 	for (auto& passID : compiledResult.sortedPass)
 	{
 		auto pass = compiledResult.renderGraph->GetPass(passID);
@@ -192,7 +192,7 @@ void GraphExecutor::ConstructResource(const RenderPassID& renderPassID, GraphCom
 		for (size_t resIdx = 0; resIdx < descriptorDesc.boundLogicalResources.size(); ++resIdx)
 		{
 			
-			auto& d3dDesc         = descriptorDesc.viewDescs[i];
+			auto& d3dDesc         = descriptorDesc.viewDescs[resIdx];
 			auto logicalResource  = resourceMgr->GetLogicalResource(descriptorDesc.boundLogicalResources[resIdx]);
 			auto physicalResource = resourceMgr->GetPhysicalResource(logicalResource->physicalResourceID);
 

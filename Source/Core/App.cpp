@@ -88,6 +88,7 @@ void App::Init(HINSTANCE hInstance)
 {
 	window   = new Window(hInstance , L"OpenLight" , WndProc);
 	renderer = new DeferredShadingRenderGraphDemo;
+//	renderer = new DeferredShadingDemo;
 //	renderer = new Renderer();
 	renderer->Init(window->GetHwnd());
 	::ShowWindow(window->GetHwnd() , SW_SHOW);
